@@ -1,0 +1,16 @@
+# Local reference material and generated review artifacts
+/Final Food Waste.pdf
+/updated_ResQ-Haul.md
+/ResQ-Haul-Demo.zip
+/resq-desktop.png
+/resq-mobile.png
+/verify-resq.cjs
+/resq-haul-deploy.tar.gz
+
+# Private hosting identity and local runtime files
+resq-haul/.openai/
+.sites-runtime/
+.env
+.env.*
+node_modules/
+__pycache__/
