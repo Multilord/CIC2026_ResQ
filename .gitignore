@@ -14,3 +14,11 @@ resq-haul/.openai/
 .env.*
 node_modules/
 __pycache__/
+/.tools/
+/review/
+/output/mobile/
+/TLFP_30_Minute_Interview_Script.md
+/TLFP_60_Minute_Interview_Script.md
+/TLFP_Updated_Interview_Script.md
+/server/data/
+/server/local.env

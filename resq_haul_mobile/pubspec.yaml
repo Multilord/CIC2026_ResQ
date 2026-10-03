@@ -1,0 +1,26 @@
+name: resq_haul_mobile
+description: ResQ-Haul mobile food recovery and circular resource network.
+publish_to: none
+version: 3.0.0+3
+environment:
+  sdk: ^3.10.3
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.5.3
+  cupertino_icons: ^1.0.8
+  http: ^1.6.0
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+  fonts:
+    - family: Editorial
+      fonts:
+        - asset: assets/fonts/Editorial.ttf
+        - asset: assets/fonts/Editorial-Italic.ttf
+          style: italic
