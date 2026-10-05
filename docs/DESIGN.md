@@ -8,6 +8,8 @@ Use the supplied food-cycle symbol: a green bowl, produce and circular recovery 
 
 ## Brand palette
 
+Use the supplied green tile at `resq_haul_mobile/assets/images/resq-haul-dashboard-logo.png` in the signed-in workspace header and desktop sidebar. Keep the transparent food-cycle symbol on the login screen.
+
 | Use | Colour |
 | --- | --- |
 | Cream canvas | `#FCFAEE` |

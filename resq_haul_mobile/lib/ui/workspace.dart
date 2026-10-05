@@ -103,7 +103,7 @@ class _WorkspaceState extends State<Workspace> {
                     children: [
                       const Padding(
                         padding: EdgeInsets.all(24),
-                        child: BrandLogo(width: 64),
+                        child: DashboardLogo(width: 64),
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 24),
@@ -150,7 +150,7 @@ class _WorkspaceState extends State<Workspace> {
                         children: [
                           Row(
                             children: [
-                              const BrandLogo(width: 56),
+                              const DashboardLogo(width: 56),
                               const SizedBox(width: 14),
                               Expanded(
                                 child: Column(

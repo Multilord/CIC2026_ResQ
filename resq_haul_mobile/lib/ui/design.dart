@@ -32,6 +32,19 @@ class BrandLogo extends StatelessWidget {
   );
 }
 
+class DashboardLogo extends StatelessWidget {
+  const DashboardLogo({super.key, this.width = 56});
+  final double width;
+  @override
+  Widget build(BuildContext context) => Image.asset(
+    'assets/images/resq-haul-dashboard-logo.png',
+    width: width,
+    height: width,
+    fit: BoxFit.contain,
+    semanticLabel: 'ResQ-Haul dashboard logo',
+  );
+}
+
 class BrandWordmark extends StatelessWidget {
   const BrandWordmark({super.key, this.size = 26});
   final double size;
