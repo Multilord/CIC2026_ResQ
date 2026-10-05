@@ -59,6 +59,31 @@ class WorkflowTests(unittest.TestCase):
         b = self.cmd('driver', 'deliver', code=b['handoverCode'], confirmed=True)
         self.assertEqual(b['stage'], 'delivered')
         self.assertTrue(b['receipt'].startswith('RCPT-'))
+        ledger = app.load_for(self.db, self.people['driver'])['earnings']
+        self.assertEqual(len(ledger), 1)
+        self.assertEqual(ledger[0]['fare'], 18)
+        self.assertEqual(app.load_for(self.db, self.people['recipient'])['earnings'], [])
+        s = app.state(self.db)
+        app.credit_driver(s, s['batches'][0])
+        self.assertEqual(len(s['earnings']), 1)
+
+    def test_fare_locks_on_claim_and_no_credit_before_handover(self):
+        self.transit()
+        self.cmd('driver', 'delay', eta=30, alternativeEta=20)
+        view = app.load_for(self.db, self.people['driver'])
+        self.assertEqual(view['batches'][0]['fare'], 18)
+        self.assertEqual(view['earnings'], [])
+
+    def test_marketplace_gives_combined_account_receiving_journeys(self):
+        app.seed_prepared(self.db)
+        app.seed_marketplace(self.db)
+        app.seed_marketplace(self.db)
+        user = dict(self.db.execute("SELECT * FROM users WHERE id='role-sender'").fetchone())
+        user.update(role='recipient', accountRole='member')
+        batches = app.load_for(self.db, user)['batches']
+        self.assertEqual({b['stage'] for b in batches}, {'listed', 'accepted', 'delivered'})
+        self.assertEqual(len(batches), 4)
+        self.assertTrue(all(b['senderId'] != user['id'] for b in batches))
 
     def test_roles_and_stale_versions_are_enforced(self):
         b = self.create()

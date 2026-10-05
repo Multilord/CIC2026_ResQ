@@ -93,10 +93,21 @@ void main() {
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Recoveries'));
       await tester.pumpAndSettle();
-      expect(find.text('Every recovery.'), findsOneWidget);
-      await tester.tap(find.text('Activity'));
+      expect(
+        find.text(role == 'driver' ? 'Delivery jobs.' : 'Every recovery.'),
+        findsOneWidget,
+      );
+      if (role == 'recipient') {
+        await tester.tap(find.byType(FloatingActionButton));
+        await tester.pumpAndSettle();
+        expect(find.text('Find food to receive.'), findsOneWidget);
+      }
+      await tester.tap(find.text(role == 'driver' ? 'Earnings' : 'Activity'));
       await tester.pumpAndSettle();
-      expect(find.text('The latest.'), findsOneWidget);
+      expect(
+        find.text(role == 'driver' ? 'Your earnings.' : 'The latest.'),
+        findsOneWidget,
+      );
       await tester.tap(find.text(role == 'admin' ? 'Manage' : 'Account'));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);

@@ -53,6 +53,7 @@ class _WorkspaceState extends State<Workspace> {
   bool busy = false;
   String search = '';
   String filter = 'Active';
+  String workspaceIdentity = '';
   String get uid => api.user['id'] ?? '';
   bool get admin => api.role == 'admin';
   Future<void> run(Future<void> Function() fn) async {
@@ -75,6 +76,13 @@ class _WorkspaceState extends State<Workspace> {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: api,
     builder: (context, _) {
+      final identity = '$uid:${api.role}';
+      if (workspaceIdentity != identity) {
+        workspaceIdentity = identity;
+        tab = 0;
+        filter = 'Active';
+        search = '';
+      }
       if (api.state == null) return SignIn(service: api);
       if (api.role == 'member') {
         return Scaffold(
@@ -170,7 +178,7 @@ class _WorkspaceState extends State<Workspace> {
       final destinations = [
         admin ? 'Network' : 'Workspace',
         'Recoveries',
-        'Activity',
+        api.role == 'driver' ? 'Earnings' : 'Activity',
         admin ? 'Manage' : 'Account',
       ];
       const icons = [
@@ -288,10 +296,11 @@ class _WorkspaceState extends State<Workspace> {
                             ...switch (tab) {
                               0 => dashboard(),
                               1 => listings(),
-                              2 => activity(),
+                              2 =>
+                                api.role == 'driver' ? earnings() : activity(),
                               _ => account(),
                             },
-                          gap(30),
+                          gap(90),
                         ],
                       ),
                     ),
@@ -301,6 +310,29 @@ class _WorkspaceState extends State<Workspace> {
             ],
           ),
         ),
+        floatingActionButton:
+            api.user['approved'] == 1 &&
+                ['sender', 'recipient'].contains(api.role)
+            ? FloatingActionButton(
+                tooltip: api.role == 'sender'
+                    ? 'Send food'
+                    : 'Find available food',
+                onPressed: busy
+                    ? null
+                    : () {
+                        if (api.role == 'sender') {
+                          createListing();
+                        } else {
+                          setState(() {
+                            tab = 1;
+                            filter = 'Available';
+                            search = '';
+                          });
+                        }
+                      },
+                child: const Icon(Icons.add),
+              )
+            : null,
         bottomNavigationBar: wide
             ? null
             : NavigationBar(
@@ -315,9 +347,13 @@ class _WorkspaceState extends State<Workspace> {
                     icon: Icon(Icons.route_outlined),
                     label: 'Recoveries',
                   ),
-                  const NavigationDestination(
-                    icon: Icon(Icons.notifications_outlined),
-                    label: 'Activity',
+                  NavigationDestination(
+                    icon: Icon(
+                      api.role == 'driver'
+                          ? Icons.account_balance_wallet_outlined
+                          : Icons.notifications_outlined,
+                    ),
+                    label: api.role == 'driver' ? 'Earnings' : 'Activity',
                   ),
                   NavigationDestination(
                     icon: const Icon(Icons.manage_accounts_outlined),
@@ -372,6 +408,23 @@ class _WorkspaceState extends State<Workspace> {
         style: const TextStyle(color: Palette.muted, height: 1.5),
       ),
       gap(24),
+      if (api.role == 'driver') ...[
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text(
+            api.user['available'] == 1 ? 'You’re online' : 'You’re offline',
+          ),
+          subtitle: const Text('Go online to accept paid collection jobs.'),
+          value: api.user['available'] == 1,
+          onChanged: busy
+              ? null
+              : (v) => run(
+                  () => api.command('availability', fields: {'available': v}),
+                ),
+        ),
+        ...earnings(compact: true),
+        gap(18),
+      ],
       Row(
         children: [
           Expanded(
@@ -552,7 +605,7 @@ class _WorkspaceState extends State<Workspace> {
       builder: (context) => AlertDialog(
         title: const Text('Restart journey timings?'),
         content: const Text(
-          'This refreshes the five prepared journeys and restarts their time windows. Other accounts and listings remain available.',
+          'This refreshes the prepared food, delivery and recovery journeys and restarts their time windows. Other accounts and listings remain available.',
         ),
         actions: [
           TextButton(
@@ -581,7 +634,9 @@ class _WorkspaceState extends State<Workspace> {
         .where(
           (b) =>
               filter == 'All' ||
-              (filter == 'Finished'
+              (filter == 'Available'
+                  ? b['stage'] == 'listed'
+                  : filter == 'Finished'
                   ? ['delivered', 'completed', 'cancelled'].contains(b['stage'])
                   : ![
                       'delivered',
@@ -591,7 +646,20 @@ class _WorkspaceState extends State<Workspace> {
         )
         .toList();
     return [
-      const Editorial('Every recovery.', size: 36),
+      Editorial(
+        api.role == 'recipient' && filter == 'Available'
+            ? 'Find food to receive.'
+            : api.role == 'driver'
+            ? 'Delivery jobs.'
+            : 'Every recovery.',
+        size: 36,
+      ),
+      if (api.role == 'recipient') ...[
+        gap(12),
+        const Text(
+          'Browse senders, review handling details and accept food you can use. Times are planning estimates including collection; the driver confirms the arrival estimate.',
+        ),
+      ],
       gap(20),
       TextField(
         onChanged: (v) => setState(() => search = v),
@@ -603,15 +671,21 @@ class _WorkspaceState extends State<Workspace> {
       gap(12),
       Wrap(
         spacing: 8,
-        children: ['Active', 'Finished', 'All']
-            .map(
-              (v) => ChoiceChip(
-                label: Text(v),
-                selected: filter == v,
-                onSelected: (_) => setState(() => filter = v),
-              ),
-            )
-            .toList(),
+        children:
+            [
+                  if (api.role == 'recipient') 'Available',
+                  'Active',
+                  'Finished',
+                  'All',
+                ]
+                .map(
+                  (v) => ChoiceChip(
+                    label: Text(v),
+                    selected: filter == v,
+                    onSelected: (_) => setState(() => filter = v),
+                  ),
+                )
+                .toList(),
       ),
       gap(16),
       if (list.isEmpty)
@@ -722,6 +796,18 @@ class _WorkspaceState extends State<Workspace> {
             style: const TextStyle(color: Palette.muted),
           ),
           gap(16),
+          if (api.role == 'driver') ...[
+            Text(
+              'RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} transport fare',
+              style: const TextStyle(
+                color: Palette.accent,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text('To: ${b['routeDestination'] ?? nameFor(b['recipientId'])}'),
+            gap(12),
+          ],
           Row(
             children: [
               const Icon(
@@ -742,7 +828,7 @@ class _WorkspaceState extends State<Workspace> {
               ),
               if (b['eta'] != null)
                 Text(
-                  '${b['eta']} min ETA',
+                  '≈ ${b['eta']} min',
                   style: const TextStyle(color: Palette.text, fontSize: 12),
                 ),
             ],
@@ -802,6 +888,80 @@ class _WorkspaceState extends State<Workspace> {
       ),
     ),
   );
+  List<Widget> earnings({bool compact = false}) {
+    final entries = List<Map<String, dynamic>>.from(
+      api.state?['earnings'] ?? [],
+    );
+    final now = DateTime.now();
+    final today = entries
+        .where((e) {
+          final at = DateTime.fromMillisecondsSinceEpoch(
+            ((e['at'] as num) * 1000).toInt(),
+          );
+          return at.year == now.year &&
+              at.month == now.month &&
+              at.day == now.day;
+        })
+        .fold<double>(0, (sum, e) => sum + (e['fare'] as num).toDouble());
+    final total = entries.fold<double>(
+      0,
+      (sum, e) => sum + (e['fare'] as num).toDouble(),
+    );
+    return [
+      if (!compact) ...[const Editorial('Your earnings.', size: 34), gap(20)],
+      Row(
+        children: [
+          Expanded(
+            child: metric(
+              'RM ${today.toStringAsFixed(2)}',
+              'Earned today',
+              highlight: true,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: metric('RM ${total.toStringAsFixed(2)}', 'Total earned'),
+          ),
+        ],
+      ),
+      if (!compact) ...[
+        gap(16),
+        const SmallNote(
+          'Transport earnings are credited after the recipient or facility confirms handover. Payouts are not connected to a bank.',
+        ),
+        gap(20),
+        Text('${entries.length} completed paid trips'),
+        gap(12),
+        if (entries.isEmpty)
+          empty(
+            'Your first trip starts here',
+            'Accept an available job and complete its handover to earn a transport fare.',
+          ),
+        ...entries.reversed.map(
+          (e) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Surface(
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(e['name']),
+                subtitle: Text(
+                  '${e['batchId']} · Credited\n${DateTime.fromMillisecondsSinceEpoch(((e['at'] as num) * 1000).toInt()).toString().substring(0, 16)}',
+                ),
+                trailing: Text(
+                  'RM ${(e['fare'] as num).toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    color: Palette.accent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    ];
+  }
+
   List<Widget> activity() => [
     const Editorial('The latest.', size: 36),
     gap(12),
@@ -1167,6 +1327,22 @@ class _WorkspaceState extends State<Workspace> {
                 information('Sender', '${b['source']} (${b['senderType']})'),
                 information('Storage', '${b['storage']}'),
                 information('Allergens', '${b['allergens']}'),
+                if (b['packaging'] != null)
+                  information('Packaging', '${b['packaging']}'),
+                if (b['portions'] != null)
+                  information('Approximate portions', '${b['portions']}'),
+                if (b['pickupNotes'] != null)
+                  information('Collection notes', '${b['pickupNotes']}'),
+                if (api.role == 'recipient')
+                  information(
+                    'Approximate arrival',
+                    '${b['eta']} minutes · planning estimate, subject to driver availability and traffic',
+                  ),
+                if (api.role == 'driver')
+                  information(
+                    'Transport earnings',
+                    'RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} · credited after confirmed handover',
+                  ),
                 information(
                   'Offer',
                   b['donate'] ? 'Donation' : 'Sale · RM ${b['price']}',
@@ -1701,6 +1877,16 @@ class _ListingFormState extends State<ListingForm> {
                 'Separated organics',
               ], (v) => category = v),
               input('kg', 'Quantity (kg)', numeric: true),
+              input(
+                'portions',
+                'Approximate number of portions',
+                numeric: true,
+              ),
+              input('packaging', 'Packaging (sealed trays, boxes or bags)'),
+              input(
+                'pickupNotes',
+                'Collection contact and pickup instructions',
+              ),
               dropdown('Storage', storage, [
                 'Chilled',
                 'Hot-held',

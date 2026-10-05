@@ -94,7 +94,13 @@ def initialize(seed_prepared_data=None):
         use_prepared = os.environ.get('RESQ_PREPARED_DATA', '1').lower() not in ['0', 'false', 'no'] if seed_prepared_data is None else seed_prepared_data
         if use_prepared:
             seed_prepared(db)
+            seed_marketplace(db)
         db.execute("UPDATE users SET role='member' WHERE role IN ('sender','recipient')")
+        s = state(db)
+        for b in s['batches']:
+            if b.get('driverId') and b['stage'] not in TERMINAL and not b.get('transportJob'):
+                b['transportJob'] = {'id': secrets.token_hex(8), 'driverId': b['driverId'], 'fare': transport_fare(b)}
+        save(db, s)
 
 
 def public(u):
@@ -256,6 +262,8 @@ def seed_prepared(db, replace=False):
         e = _prepared_event(at, actor, message, complete['id'], uid); complete['history'].append(e); complete_events.append(e)
     complete['version'] = len(complete['history'])
 
+    for b in [route, expiry, recovery]:
+        b['transportJob'] = {'id': secrets.token_hex(8), 'driverId': b['driverId'], 'fare': transport_fare(b)}
     s['batches'].extend([listed, route, expiry, recovery, complete])
     all_events = listed_events + route_events + expiry_events + recovery_events + complete_events
     s['events'] = sorted(all_events + s['events'], key=lambda e: e['at'], reverse=True)
@@ -278,6 +286,62 @@ def expire(s):
             b['expiredAt'] = time.time()
             b['incident'] = 'Approved food window elapsed. Facility suitability review is required.'
             event(s, SYSTEM, 'Approved food window elapsed. Diverted to recovery; current custody retained.', b)
+
+
+def transport_fare(b):
+    # Prototype tariff in MYR, locked when a driver accepts the job.
+    return round(8 + .5 * max(10, b.get('eta', 20)), 2)
+
+
+def credit_driver(s, b):
+    job = b.get('transportJob')
+    if not job:
+        job = {'id': secrets.token_hex(8), 'driverId': b['driverId'], 'fare': transport_fare(b)}
+        b['transportJob'] = job
+    ledger = s.setdefault('earnings', [])
+    if not any(e['id'] == job['id'] for e in ledger):
+        ledger.append({**job, 'batchId': b['id'], 'name': b['name'], 'at': time.time()})
+
+
+def seed_marketplace(db, replace=False):
+    s = state(db)
+    if s.get('marketplaceSeeded') and not replace:
+        return
+    if replace:
+        ids = {'RH-301', 'RH-302', 'RH-303', 'RH-304'}
+        s['batches'] = [b for b in s['batches'] if b['id'] not in ids]
+        s['events'] = [e for e in s['events'] if e.get('batchId') not in ids]
+        s['earnings'] = [e for e in s.get('earnings', []) if e['batchId'] not in ids]
+    now = time.time()
+    for i, (name, source, kg, eta, stage) in enumerate([
+        ('Packed vegetable briyani', 'Community Kitchen', 12, 25, 'listed'),
+        ('Fresh bakery bread assortment', 'Neighbourhood Pantry', 8, 18, 'listed'),
+        ('Sealed fruit and salad boxes', 'Community Kitchen', 10, 30, 'accepted'),
+        ('Community lunch parcels', 'Neighbourhood Pantry', 6, 22, 'delivered'),
+    ]):
+        owner = 'role-recipient' if i % 2 == 0 else 'role-recipient-near'
+        b = {'id': f'RH-{301+i}', 'version': 0, 'name': name, 'source': source,
+             'senderId': owner, 'senderType': 'Community organisation',
+             'location': 'Chow Kit collection counter' if i % 2 == 0 else 'Titiwangsa community hall',
+             'kg': kg, 'category': 'Bread' if i == 1 else 'Meals', 'storage': 'Chilled',
+             'allergens': 'Wheat, milk' if i == 1 else 'Check attached ingredient labels; may contain soy',
+             'deadline': now + 6*3600, 'eta': eta, 'createdAt': now, 'stage': stage,
+             'donate': True, 'price': 0, 'recipientId': 'role-sender' if i >= 2 else '',
+             'driverId': 'role-driver' if i == 3 else '', 'facilityId': '', 'offer': None,
+             'rerouted': False, 'history': [], 'custodianId': 'role-sender' if i == 3 else owner,
+             'participants': [owner, 'role-sender'] if i >= 2 else [owner],
+             'routeOrigin': source, 'routeDestination': 'KL Event Collective' if i >= 2 else '',
+             'packaging': 'Sealed food-grade containers', 'portions': kg * 3,
+             'pickupNotes': 'Collect at the reception counter. Ring on arrival.',
+             'etaSource': 'Planning estimate; confirmed by the assigned driver'}
+        if i == 3:
+            b.update(deliveredAt=now-1800, receipt='RCPT-MARKET-304', eta=0,
+                     transportJob={'id': 'prepared-trip-304', 'driverId': 'role-driver', 'fare': 19.0})
+            credit_driver(s, b)
+        event(s, SYSTEM, 'Food listing published.' if i < 2 else 'Recipient accepted the food.' if i == 2 else 'Delivery completed and transport earnings credited.', b)
+        s['batches'].append(b)
+    s['marketplaceSeeded'] = True
+    save(db, s)
 
 
 def session(db, token):
@@ -308,6 +372,8 @@ def load_for(db, user):
         involved = user['id'] in [b['senderId'], b.get('recipientId'), b.get('driverId'), b.get('facilityId'), (b.get('offer') or {}).get('target'), *b.get('participants', [])]
         market = user['approved'] and ((user['role'] == 'recipient' and b['stage'] == 'listed') or (user['role'] == 'driver' and b['stage'] in ['accepted', 'assessed']) or (user['role'] == 'recovery' and b['stage'] in ['waste', 'rejected']))
         if user['role'] == 'admin' or involved or market:
+            if user['role'] == 'driver':
+                b['fare'] = (b.get('transportJob') or {}).get('fare', transport_fare(b))
             if user['id'] != b.get('recipientId') or b['stage'] != 'transit' or not b.get('deliveryAcceptedAt'):
                 b.pop('handoverCode', None)
             if user['role'] != 'admin' and not involved:
@@ -315,7 +381,8 @@ def load_for(db, user):
             visible.append(b)
     visible_ids = {b['id'] for b in visible}
     events = s['events'] if user['role'] == 'admin' else [e for e in s['events'] if e['batchId'] in visible_ids or e['userId'] == user['id']]
-    return {'user': public(user), 'batches': visible, 'users': users if user['role'] == 'admin' else [u for u in users if u['approved']], 'events': events[:100], 'paused': s['paused'], 'ai': s['ai'], 'geminiConfigured': bool(os.environ.get('GEMINI_API_KEY') and os.environ.get('GEMINI_MODEL')), 'serverTime': time.time()}
+    earnings = [e for e in s.get('earnings', []) if e['driverId'] == user['id']] if user['role'] == 'driver' else []
+    return {'earnings': earnings, 'user': public(user), 'batches': visible, 'users': users if user['role'] == 'admin' else [u for u in users if u['approved']], 'events': events[:100], 'paused': s['paused'], 'ai': s['ai'], 'geminiConfigured': bool(os.environ.get('GEMINI_API_KEY') and os.environ.get('GEMINI_MODEL')), 'serverTime': time.time()}
 
 
 def capacity(s, uid):
@@ -351,6 +418,7 @@ def command(db, u, d):
     if a == 'resetPrepared':
         require(admin, 'Admin access required.', 403)
         seed_prepared(db, replace=True)
+        seed_marketplace(db, replace=True)
         return
     if a in ['approve', 'availability', 'pause']:
         if a == 'availability':
@@ -374,6 +442,9 @@ def command(db, u, d):
         require(d.get('confirmed') is True, 'Confirm the food details and approved handling window.')
         b = {'id': 'RH-' + secrets.token_hex(3).upper(), 'version': 0, 'name': text(d, 'name'), 'senderId': u['id'], 'source': u['name'], 'senderType': text(d, 'senderType'), 'location': text(d, 'location'), 'kg': number(d, 'kg', .1, 500), 'category': text(d, 'category'), 'storage': text(d, 'storage'), 'allergens': text(d, 'allergens'), 'deadline': time.time() + number(d, 'minutes', 5, 1440)*60, 'eta': number(d, 'eta', 1, 240), 'createdAt': time.time(), 'stage': 'waste' if d.get('waste') else 'listed', 'donate': bool(d.get('donate', True)), 'price': number(d, 'price', 0, 10000), 'recipientId': '', 'driverId': '', 'facilityId': '', 'offer': None, 'rerouted': False, 'history': []}
         s['batches'].append(b)
+        b['packaging'] = str(d.get('packaging', 'Not specified'))[:300]
+        b['pickupNotes'] = str(d.get('pickupNotes', ''))[:300]
+        b['portions'] = number(d, 'portions', 1, 2000) if 'portions' in d else None
         b['custodianId'] = u['id']
         b['participants'] = [u['id']]
         event(s, u, 'Listing published; awaiting recipient or recovery facility acceptance.', b)
@@ -396,6 +467,7 @@ def command(db, u, d):
         eta = offer.get('eta', b['eta'])
         require(stage in ACTIVE and viable(b, eta), 'Insufficient approved time for this journey.')
         b['recipientId'] = u['id']
+        b['routeDestination'] = u['location']
         b['eta'] = eta
         b['offer'] = None
         b['handoverCode'] = str(secrets.randbelow(900000) + 100000)
@@ -415,6 +487,7 @@ def command(db, u, d):
         require(u['available'] and capacity(s, u['id']) - already_held + b['kg'] <= u['capacity'], 'Vehicle capacity exceeded or driver unavailable.')
         require(stage == 'assessed' or viable(b), 'Delivery window is too short.')
         b['driverId'] = u['id']
+        b['transportJob'] = {'id': secrets.token_hex(8), 'driverId': u['id'], 'fare': transport_fare(b)}
         b['stage'] = 'assigned' if stage == 'accepted' else 'recoveryAssigned'
         msg = 'Driver accepted the collection task.'
     elif a == 'pickup':
@@ -473,6 +546,7 @@ def command(db, u, d):
         b['receipt'] = 'RCPT-' + secrets.token_hex(5).upper()
         b['deliveredAt'] = time.time()
         b['custodianId'] = b['recipientId']
+        credit_driver(s, b)
         b['offer'] = None
         msg = 'Recipient code verified. Delivery receipt recorded.'
     elif a == 'delay':
@@ -533,6 +607,7 @@ def command(db, u, d):
             require(capacity(s, u['id']) - b['kg'] + weight <= u['capacity'], 'Measured weight exceeds facility capacity.')
             b.update(stage='facilityAccepted', measuredKg=weight)
             b['custodianId'] = u['id']
+            credit_driver(s, b)
             msg = 'Weighed, inspected and accepted for controlled processing.'
         else:
             b.update(stage='rejected', facilityId='', driverId='', measuredKg=weight)
