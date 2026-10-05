@@ -74,92 +74,165 @@ class _WorkspaceState extends State<Workspace> {
     listenable: api,
     builder: (context, _) {
       if (api.state == null) return SignIn(service: api);
+      final wide = MediaQuery.sizeOf(context).width >= 900;
+      final destinations = [
+        admin ? 'Network' : 'Workspace',
+        'Recoveries',
+        'Activity',
+        admin ? 'Manage' : 'Account',
+      ];
+      const icons = [
+        Icons.space_dashboard_outlined,
+        Icons.route_outlined,
+        Icons.notifications_outlined,
+        Icons.manage_accounts_outlined,
+      ];
       return Scaffold(
         body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1000),
-              child: RefreshIndicator(
-                onRefresh: api.refresh,
-                child: ListView(
-                  padding: const EdgeInsets.all(24),
-                  children: [
-                    Row(
-                      children: [
-                        const BrandLogo(width: 56),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
+            children: [
+              if (wide)
+                Container(
+                  width: 210,
+                  decoration: const BoxDecoration(
+                    color: Palette.panel,
+                    border: Border(right: BorderSide(color: Palette.line)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: BrandLogo(width: 64),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 24),
+                        child: Editorial('ResQ-Haul', size: 27),
+                      ),
+                      gap(32),
+                      for (var i = 0; i < destinations.length; i++)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                          child: ListTile(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            selected: tab == i,
+                            selectedTileColor: Palette.brandSurface,
+                            selectedColor: Palette.accent,
+                            leading: Icon(icons[i]),
+                            title: Text(destinations[i]),
+                            onTap: () => setState(() => tab = i),
+                          ),
+                        ),
+                      const Spacer(),
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'Good food.\nBetter futures.',
+                          style: TextStyle(color: Palette.muted, height: 1.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1000),
+                    child: RefreshIndicator(
+                      onRefresh: api.refresh,
+                      child: ListView(
+                        padding: const EdgeInsets.all(24),
+                        children: [
+                          Row(
                             children: [
-                              const Eyebrow('RESQ-HAUL'),
-                              Text(
-                                roleNames[api.role] ?? '',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w600,
+                              const BrandLogo(width: 56),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Eyebrow('RESQ-HAUL'),
+                                    Text(
+                                      roleNames[api.role] ?? '',
+                                      style: const TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
                                 ),
+                              ),
+                              IconButton(
+                                tooltip: 'Refresh',
+                                onPressed: api.refresh,
+                                icon: const Icon(Icons.refresh),
+                              ),
+                              IconButton(
+                                tooltip: 'Sign out',
+                                onPressed: busy ? null : () => run(api.logout),
+                                icon: const Icon(Icons.logout),
                               ),
                             ],
                           ),
-                        ),
-                        IconButton(
-                          tooltip: 'Refresh',
-                          onPressed: api.refresh,
-                          icon: const Icon(Icons.refresh),
-                        ),
-                        IconButton(
-                          tooltip: 'Sign out',
-                          onPressed: busy ? null : () => run(api.logout),
-                          icon: const Icon(Icons.logout),
-                        ),
-                      ],
-                    ),
-                    gap(28),
-                    if (busy) const LinearProgressIndicator(),
-                    if (api.error != null) SmallNote(api.error!, warning: true),
-                    if (api.user['approved'] != 1) ...[
-                      const Editorial('Verification pending', size: 34),
-                      gap(12),
-                      const Text(
-                        'An admin must verify your account before you can accept food or collections. Your account is ready; check back after verification.',
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 20),
+                            child: Divider(height: 1, color: Palette.line),
+                          ),
+                          if (busy) const LinearProgressIndicator(),
+                          if (api.error != null)
+                            SmallNote(api.error!, warning: true),
+                          if (api.user['approved'] != 1) ...[
+                            const Editorial('Verification pending', size: 34),
+                            gap(12),
+                            const Text(
+                              'An admin must verify your account before you can accept food or collections. Your account is ready; check back after verification.',
+                            ),
+                          ] else
+                            ...switch (tab) {
+                              0 => dashboard(),
+                              1 => listings(),
+                              2 => activity(),
+                              _ => account(),
+                            },
+                          gap(30),
+                        ],
                       ),
-                    ] else
-                      ...switch (tab) {
-                        0 => dashboard(),
-                        1 => listings(),
-                        2 => activity(),
-                        _ => account(),
-                      },
-                    gap(30),
-                  ],
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
         ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: tab,
-          onDestinationSelected: (v) => setState(() => tab = v),
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(Icons.space_dashboard_outlined),
-              label: admin ? 'Network' : 'Workspace',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.route_outlined),
-              label: 'Recoveries',
-            ),
-            const NavigationDestination(
-              icon: Icon(Icons.notifications_outlined),
-              label: 'Activity',
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.manage_accounts_outlined),
-              label: admin ? 'Manage' : 'Account',
-            ),
-          ],
-        ),
+        bottomNavigationBar: wide
+            ? null
+            : NavigationBar(
+                selectedIndex: tab,
+                onDestinationSelected: (v) => setState(() => tab = v),
+                destinations: [
+                  NavigationDestination(
+                    icon: const Icon(Icons.space_dashboard_outlined),
+                    label: admin ? 'Network' : 'Workspace',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.route_outlined),
+                    label: 'Recoveries',
+                  ),
+                  const NavigationDestination(
+                    icon: Icon(Icons.notifications_outlined),
+                    label: 'Activity',
+                  ),
+                  NavigationDestination(
+                    icon: const Icon(Icons.manage_accounts_outlined),
+                    label: admin ? 'Manage' : 'Account',
+                  ),
+                ],
+              ),
       );
     },
   );
@@ -176,11 +249,11 @@ class _WorkspaceState extends State<Workspace> {
         .where((b) => ['delivered', 'completed'].contains(b['stage']))
         .fold<double>(0, (a, b) => a + (b['measuredKg'] ?? b['kg']).toDouble());
     final titles = {
-      'sender': 'Make room for good.',
-      'recipient': 'Food for your community.',
-      'driver': 'Your next collection.',
-      'recovery': 'A new cycle starts here.',
-      'admin': 'Keep the network moving.',
+      'sender': 'Your surplus, in motion.',
+      'recipient': 'Community collections.',
+      'driver': 'Today’s collections.',
+      'recovery': 'Recovery operations.',
+      'admin': 'Network overview.',
     };
     final descriptions = {
       'sender':
@@ -195,10 +268,13 @@ class _WorkspaceState extends State<Workspace> {
           'Verify partners, resolve exceptions and oversee AI coordination.',
     };
     return [
-      Eyebrow('WELCOME, ${api.user['name'].toString().toUpperCase()}'),
+      Text(
+        api.user['name'].toString(),
+        style: const TextStyle(color: Palette.muted),
+      ),
+      gap(8),
+      Editorial(titles[api.role]!, size: 32),
       gap(10),
-      Editorial(titles[api.role]!, size: 36),
-      gap(12),
       Text(
         descriptions[api.role]!,
         style: const TextStyle(color: Palette.muted, height: 1.5),
@@ -223,15 +299,48 @@ class _WorkspaceState extends State<Workspace> {
           icon: const Icon(Icons.add),
           label: const Text('List surplus or organic material'),
         ),
-      if (admin) ...[gap(12), coordinator(), gap(20)],
       gap(20),
+      if (issues.isNotEmpty) ...[
+        Surface(
+          color: Palette.attentionSurface,
+          padding: 16,
+          child: Row(
+            children: [
+              const Icon(Icons.priority_high_rounded, color: Palette.warning),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${issues.length} ${issues.length == 1 ? 'journey needs' : 'journeys need'} attention',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        color: Palette.warning,
+                      ),
+                    ),
+                    gap(4),
+                    const Text(
+                      'Review timing or recovery before the next handover.',
+                      style: TextStyle(
+                        color: Palette.muted,
+                        fontSize: 12,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        gap(24),
+      ],
       Row(
         children: [
           Expanded(
             child: Text(
-              issues.isNotEmpty
-                  ? 'Needs your attention'
-                  : 'Your recovery queue',
+              'Your recovery queue',
               style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
             ),
           ),
@@ -249,7 +358,8 @@ class _WorkspaceState extends State<Workspace> {
               ? 'Your listings and progress will appear here once you publish surplus.'
               : 'No tasks are available yet. New requests will appear here as the network updates.',
         ),
-      ...(issues.isNotEmpty ? issues : active).take(6).map(batchCard),
+      journeyGrid([...issues, ...active.where((b) => !issues.contains(b))]),
+      if (admin) ...[gap(16), coordinator()],
     ];
   }
 
@@ -407,7 +517,12 @@ class _WorkspaceState extends State<Workspace> {
           'Nothing here yet',
           'Try another filter or check back for new recoveries.',
         ),
-      ...list.map(batchCard),
+      Text(
+        '${list.length} ${list.length == 1 ? 'recovery' : 'recoveries'}',
+        style: const TextStyle(color: Palette.muted, fontSize: 12),
+      ),
+      gap(12),
+      journeyGrid(list),
     ];
   }
 
@@ -418,68 +533,163 @@ class _WorkspaceState extends State<Workspace> {
     return 'Awaiting assignment';
   }
 
+  Widget journeyGrid(List<Map<String, dynamic>> batches) => LayoutBuilder(
+    builder: (context, constraints) {
+      final columns = constraints.maxWidth >= 680 ? 2 : 1;
+      final width = (constraints.maxWidth - (columns - 1) * 16) / columns;
+      return Wrap(
+        spacing: 16,
+        children: [
+          for (final b in batches) SizedBox(width: width, child: batchCard(b)),
+        ],
+      );
+    },
+  );
+
   String timeLeft(Map<String, dynamic> b) {
-    final minutes = ((b['deadline'] as num) - api.now) ~/ 60;
+    final minutes = (((b['deadline'] as num) - api.now) / 60).ceil();
     return minutes > 0 ? '$minutes min remaining' : 'Food window elapsed';
   }
+
+  Widget information(String label, String value) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 9),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 92,
+          child: Text(
+            label,
+            style: const TextStyle(color: Palette.muted, fontSize: 12),
+          ),
+        ),
+        Expanded(
+          child: Text(value, style: const TextStyle(fontSize: 13, height: 1.4)),
+        ),
+      ],
+    ),
+  );
 
   Widget batchCard(Map<String, dynamic> b) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Surface(
-      child: InkWell(
-        onTap: () => details(b['id']),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(child: Eyebrow(b['id'])),
-                Text(
-                  '${b['kg']} kg',
+      onTap: () => details(b['id']),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  b['id'],
                   style: const TextStyle(
-                    color: Palette.accent,
-                    fontWeight: FontWeight.bold,
+                    color: Palette.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
+              ),
+              Text(
+                '${b['kg']} kg',
+                style: const TextStyle(
+                  color: Palette.accent,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          gap(12),
+          Text(
+            b['name'],
+            style: const TextStyle(
+              fontSize: 19,
+              fontWeight: FontWeight.w600,
+              height: 1.3,
             ),
-            gap(12),
-            Text(
-              b['name'],
-              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w600),
-            ),
-            gap(6),
-            Text(
-              '${b['source']} · ${b['category']}',
-              style: const TextStyle(color: Palette.muted),
-            ),
-            gap(14),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+          ),
+          gap(6),
+          Text(
+            '${b['source']} · ${b['category']}',
+            style: const TextStyle(color: Palette.muted),
+          ),
+          gap(16),
+          Row(
+            children: [
+              const Icon(
+                Icons.location_on_outlined,
+                size: 16,
+                color: Palette.muted,
+              ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  b['routeOrigin'] ??
+                      b['location'] ??
+                      'Pickup location pending',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Palette.muted, fontSize: 12),
+                ),
+              ),
+              if (b['eta'] != null)
+                Text(
+                  '${b['eta']} min ETA',
+                  style: const TextStyle(color: Palette.text, fontSize: 12),
+                ),
+            ],
+          ),
+          gap(14),
+          const Divider(height: 1, color: Palette.line),
+          gap(14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              Text(
+                stages[b['stage']] ?? b['stage'],
+                style: const TextStyle(
+                  color: Palette.accent,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              if ([
+                'listed',
+                'accepted',
+                'assigned',
+                'transit',
+              ].contains(b['stage']))
+                Text(
+                  '· ${timeLeft(b)}',
+                  style: const TextStyle(color: Palette.muted, fontSize: 12),
+                ),
+              if (b['incident'] != null && b['incident'] != '')
+                const Text(
+                  'Needs attention',
+                  style: TextStyle(color: Palette.warning, fontSize: 12),
+                ),
+            ],
+          ),
+          gap(12),
+          const Align(
+            alignment: Alignment.centerRight,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Chip(label: Text(stages[b['stage']] ?? b['stage'])),
-                if ([
-                  'listed',
-                  'accepted',
-                  'assigned',
-                  'transit',
-                ].contains(b['stage']))
-                  Chip(label: Text(timeLeft(b))),
-                if (b['incident'] != null && b['incident'] != '')
-                  const Chip(
-                    avatar: Icon(Icons.priority_high, size: 16),
-                    label: Text('Needs attention'),
+                Text(
+                  'View journey',
+                  style: TextStyle(
+                    color: Palette.accent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
                   ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward, size: 18, color: Palette.accent),
               ],
             ),
-            gap(4),
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Icon(Icons.arrow_forward, color: Palette.accent),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     ),
   );
@@ -780,14 +990,21 @@ class _WorkspaceState extends State<Workspace> {
                 gap(14),
                 Text('${stages[stage]} · ${b['kg']} kg'),
                 gap(16),
-                Text(
-                  'Sender: ${b['source']} (${b['senderType']})\nCollection: ${b['location']}\nStorage: ${b['storage']}\nAllergens: ${b['allergens']}\n${b['donate'] ? 'Donation' : 'Sale · RM ${b['price']}'}',
-                  style: const TextStyle(height: 1.8),
-                ),
-                gap(12),
-                Text(
-                  'Recipient: ${nameFor(b['recipientId'])}\nDriver: ${nameFor(b['driverId'])}\nFacility: ${nameFor(b['facilityId'])}\nCurrent custody: ${nameFor(b['custodianId'] ?? b['senderId'])}',
-                  style: const TextStyle(height: 1.8, color: Palette.muted),
+                Surface(
+                  padding: 16,
+                  child: Column(
+                    children: [
+                      information('Pickup', '${b['location']}'),
+                      information(
+                        'Destination',
+                        b['routeDestination'] ?? nameFor(b['recipientId']),
+                      ),
+                      information(
+                        'Held by',
+                        nameFor(b['custodianId'] ?? b['senderId']),
+                      ),
+                    ],
+                  ),
                 ),
                 if (b['routeSummary'] != null) ...[
                   gap(14),
@@ -804,7 +1021,11 @@ class _WorkspaceState extends State<Workspace> {
                     expired: stage == 'waste',
                   ),
                   gap(10),
-                  Text(b['routeSummary']),
+                  Text(
+                    b['rerouted'] == true
+                        ? (b['alternativeRouteSummary'] ?? b['routeSummary'])
+                        : b['routeSummary'],
+                  ),
                   if (b['alternativeRouteSummary'] != null) ...[
                     gap(6),
                     Text(
@@ -813,6 +1034,22 @@ class _WorkspaceState extends State<Workspace> {
                     ),
                   ],
                 ],
+                gap(20),
+                const Text(
+                  'Handling & partners',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                ),
+                gap(8),
+                information('Sender', '${b['source']} (${b['senderType']})'),
+                information('Storage', '${b['storage']}'),
+                information('Allergens', '${b['allergens']}'),
+                information(
+                  'Offer',
+                  b['donate'] ? 'Donation' : 'Sale · RM ${b['price']}',
+                ),
+                information('Recipient', nameFor(b['recipientId'])),
+                information('Driver', nameFor(b['driverId'])),
+                information('Facility', nameFor(b['facilityId'])),
                 if (stage == 'waste' && b['expiredAt'] != null) ...[
                   gap(12),
                   const SmallNote(
@@ -1043,7 +1280,7 @@ class SignIn extends StatefulWidget {
 class _SignInState extends State<SignIn> {
   final form = GlobalKey<FormState>();
   final values = <String, String>{};
-  bool registering = false, busy = false;
+  bool registering = false, busy = false, revealPassword = false;
   String role = 'sender';
   String? message;
   @override
@@ -1153,14 +1390,35 @@ class _SignInState extends State<SignIn> {
     padding: const EdgeInsets.only(bottom: 12),
     child: TextFormField(
       key: ValueKey(key),
-      obscureText: password,
+      obscureText: password && !revealPassword,
+      autofillHints: key == 'email'
+          ? const [AutofillHints.email]
+          : password
+          ? const [AutofillHints.password]
+          : null,
+      textInputAction: password ? TextInputAction.done : TextInputAction.next,
+      onFieldSubmitted: password ? (_) => busy ? null : submit() : null,
       keyboardType: numeric
           ? TextInputType.number
           : key == 'email'
           ? TextInputType.emailAddress
           : TextInputType.text,
       autocorrect: !password,
-      decoration: InputDecoration(labelText: label),
+      decoration: InputDecoration(
+        labelText: label,
+        suffixIcon: password
+            ? IconButton(
+                tooltip: revealPassword ? 'Hide password' : 'Show password',
+                onPressed: () =>
+                    setState(() => revealPassword = !revealPassword),
+                icon: Icon(
+                  revealPassword
+                      ? Icons.visibility_off_outlined
+                      : Icons.visibility_outlined,
+                ),
+              )
+            : null,
+      ),
       onSaved: (v) => values[key] = v!.trim(),
       validator: (v) => v == null || v.trim().isEmpty
           ? 'Required'

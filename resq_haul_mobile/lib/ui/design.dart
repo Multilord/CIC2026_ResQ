@@ -71,7 +71,7 @@ ThemeData appTheme() => ThemeData(
   filledButtonTheme: FilledButtonThemeData(
     style: FilledButton.styleFrom(
       minimumSize: const Size(0, 52),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
     ),
   ),
@@ -80,7 +80,7 @@ ThemeData appTheme() => ThemeData(
       foregroundColor: Palette.text,
       minimumSize: const Size(0, 50),
       side: const BorderSide(color: Palette.line),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
   ),
   navigationBarTheme: NavigationBarThemeData(
@@ -165,7 +165,7 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     color: color,
-    borderRadius: BorderRadius.circular(25),
+    borderRadius: BorderRadius.circular(16),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       onTap: onTap,

@@ -59,6 +59,8 @@ void main() {
       await tester.pumpWidget(PrototypeApp(service: service));
       expect(find.text(roleNames[role]!), findsOneWidget);
       if (role == 'admin') {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -500));
+        await tester.pumpAndSettle();
         expect(find.text('Automated coordination active'), findsOneWidget);
         expect(find.text('Restart journey timings'), findsOneWidget);
       }
@@ -75,6 +77,49 @@ void main() {
       service.dispose();
     });
   }
+
+  testWidgets(
+    'desktop queue retains routine tasks when another needs attention',
+    (tester) async {
+      tester.view.physicalSize = const Size(1280, 1000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = NetworkService();
+      service.state = {
+        'user': {
+          'id': 'driver',
+          'name': 'Hauler',
+          'role': 'driver',
+          'approved': 1,
+        },
+        'batches': [
+          for (var i = 0; i < 2; i++)
+            {
+              'id': 'RH-$i',
+              'name': i == 0 ? 'Urgent collection' : 'Routine collection',
+              'stage': 'transit',
+              'source': 'Event host',
+              'category': 'Meals',
+              'kg': 12,
+              'location': 'Sentul',
+              'eta': 18,
+              'deadline': service.now + 3600,
+              'incident': i == 0 ? 'Route delay' : null,
+            },
+        ],
+        'users': [],
+        'events': [],
+      };
+      await tester.pumpWidget(PrototypeApp(service: service));
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(find.text('Urgent collection'), findsOneWidget);
+      expect(find.text('Routine collection'), findsOneWidget);
+      expect(find.text('1 journey needs attention'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      service.dispose();
+    },
+  );
 
   testWidgets('route map shows current and faster paths on a phone', (
     tester,
