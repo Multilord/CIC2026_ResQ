@@ -5,6 +5,48 @@ import 'package:resq_haul_mobile/ui/workspace.dart';
 import 'package:resq_haul_mobile/ui/design.dart';
 
 void main() {
+  testWidgets('recipient queue includes a direct offer awaiting acceptance', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final service = NetworkService();
+    service.state = {
+      'user': {
+        'id': 'recipient',
+        'name': 'Community partner',
+        'role': 'recipient',
+        'approved': 1,
+      },
+      'batches': [
+        for (final targeted in [true, false])
+          {
+            'id': targeted ? 'RH-306' : 'RH-301',
+            'name': targeted
+                ? 'Premium vegetable surplus'
+                : 'General marketplace food',
+            'stage': 'listed',
+            'source': 'Neighbourhood Pantry',
+            'category': 'Produce',
+            'kg': 15,
+            'location': 'Titiwangsa',
+            'eta': 15,
+            'deadline': service.now + 3600,
+            'offer': targeted ? {'target': 'recipient'} : null,
+          },
+      ],
+      'users': [],
+      'events': [],
+    };
+    await tester.pumpWidget(PrototypeApp(service: service));
+    expect(find.text('Premium vegetable surplus'), findsOneWidget);
+    expect(find.text('Awaiting your acceptance'), findsOneWidget);
+    expect(find.text('General marketplace food'), findsNothing);
+    expect(tester.takeException(), isNull);
+    service.dispose();
+  });
   testWidgets(
     'combined account chooses a mode before seeing workspace actions',
     (tester) async {

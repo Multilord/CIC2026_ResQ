@@ -87,6 +87,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({b['stage'] for b in batches}, {'listed', 'accepted', 'delivered', 'transit'})
         self.assertEqual(len(batches), 8)
         self.assertTrue(all(b['senderId'] != user['id'] for b in batches))
+        offer = next(b for b in batches if b['id'] == 'RH-306')
+        self.assertEqual(offer['stage'], 'listed')
+        self.assertEqual(offer['offer']['target'], user['id'])
+        app.command(self.db, user, {'action': 'accept', 'id': offer['id'], 'version': offer['version']})
+        accepted = next(b for b in app.state(self.db)['batches'] if b['id'] == offer['id'])
+        self.assertEqual(accepted['stage'], 'accepted')
+        self.assertEqual(accepted['recipientId'], user['id'])
 
     def test_prepared_recipient_can_confirm_arrival_then_driver_completes(self):
         app.seed_prepared(self.db, replace=True)

@@ -375,8 +375,14 @@ class _WorkspaceState extends State<Workspace> {
   // Recovery stages that only matter to facilities, haulers and admin —
   // recipients should not see these unless they are specifically involved.
   static const _recoveryStages = {
-    'waste', 'assessed', 'recoveryAssigned', 'collected',
-    'facilityArrival', 'facilityAccepted', 'processing', 'rejected',
+    'waste',
+    'assessed',
+    'recoveryAssigned',
+    'collected',
+    'facilityArrival',
+    'facilityAccepted',
+    'processing',
+    'rejected',
   };
 
   bool _relevantForRecipient(Map<String, dynamic> b) {
@@ -390,8 +396,10 @@ class _WorkspaceState extends State<Workspace> {
 
   bool _isAvailableMarket(Map<String, dynamic> b) {
     if (api.role == 'recipient') return b['stage'] == 'listed';
-    if (api.role == 'driver') return ['accepted', 'assessed'].contains(b['stage']);
-    if (api.role == 'recovery') return ['waste', 'rejected'].contains(b['stage']);
+    if (api.role == 'driver')
+      return ['accepted', 'assessed'].contains(b['stage']);
+    if (api.role == 'recovery')
+      return ['waste', 'rejected'].contains(b['stage']);
     return b['stage'] == 'listed';
   }
 
@@ -401,7 +409,11 @@ class _WorkspaceState extends State<Workspace> {
           (b) => !['delivered', 'completed', 'cancelled'].contains(b['stage']),
         )
         // Exclude market items (awaiting acceptance) from the active dashboard queue
-        .where((b) => !_isAvailableMarket(b))
+        .where(
+          (b) =>
+              !_isAvailableMarket(b) ||
+              (api.role == 'recipient' && b['offer']?['target'] == uid),
+        )
         .where(_relevantForRecipient)
         .toList();
     final issues = active
@@ -673,8 +685,12 @@ class _WorkspaceState extends State<Workspace> {
                   ? _isAvailableMarket(b)
                   : filter == 'Finished'
                   ? ['delivered', 'completed', 'cancelled'].contains(b['stage'])
-                  : (!['delivered', 'completed', 'cancelled'].contains(b['stage']) &&
-                     !_isAvailableMarket(b))),
+                  : (![
+                          'delivered',
+                          'completed',
+                          'cancelled',
+                        ].contains(b['stage']) &&
+                        !_isAvailableMarket(b))),
         )
         .toList();
     return [
@@ -760,7 +776,9 @@ class _WorkspaceState extends State<Workspace> {
   }
 
   String journeyStatus(Map<String, dynamic> b) =>
-      b['stage'] == 'transit' && b['foodArrivalAt'] != null
+      api.role == 'recipient' && b['offer']?['target'] == uid
+      ? 'Awaiting your acceptance'
+      : b['stage'] == 'transit' && b['foodArrivalAt'] != null
       ? b['deliveryAcceptedAt'] != null
             ? 'Awaiting verified handover'
             : 'Awaiting recipient inspection'
@@ -840,10 +858,7 @@ class _WorkspaceState extends State<Workspace> {
             gap(4),
             Text(
               'Platform takes 20%. You earn RM ${(((b['fare'] ?? 0) as num) * 0.8).toStringAsFixed(2)}',
-              style: const TextStyle(
-                color: Palette.muted,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Palette.muted, fontSize: 12),
             ),
             gap(10),
             Text('To: ${b['routeDestination'] ?? nameFor(b['recipientId'])}'),
