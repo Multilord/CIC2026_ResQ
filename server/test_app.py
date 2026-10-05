@@ -41,13 +41,19 @@ class WorkflowTests(unittest.TestCase):
         self.create()
         self.cmd('recipient', 'accept')
         self.cmd('driver', 'claim')
-        return self.cmd('driver', 'pickup', confirmed=True)
+        self.cmd('driver', 'pickup', confirmed=True)
+        return self.cmd('sender', 'release', confirmed=True)
 
     def test_delivery_requires_recipient_code_and_records_receipt(self):
         b = self.transit()
         with self.assertRaises(app.Problem):
             self.cmd('driver', 'deliver', code='2468', confirmed=True)
         self.assertNotIn('handoverCode', app.load_for(self.db, self.people['driver'])['batches'][0])
+        self.assertNotIn('handoverCode', app.load_for(self.db, self.people['recipient'])['batches'][0])
+        with self.assertRaises(app.Problem):
+            self.cmd('driver', 'deliver', code=b['handoverCode'], confirmed=True)
+        self.cmd('driver', 'arrive', confirmed=True)
+        self.cmd('recipient', 'acceptDelivery', confirmed=True)
         recipient = app.load_for(self.db, self.people['recipient'])['batches'][0]
         self.assertEqual(b['handoverCode'], recipient['handoverCode'])
         b = self.cmd('driver', 'deliver', code=b['handoverCode'], confirmed=True)
@@ -63,6 +69,64 @@ class WorkflowTests(unittest.TestCase):
             self.cmd('driver', 'claim', version=b['version'])
         self.assertEqual(error.exception.status, 409)
 
+    def test_pickup_requires_current_holder_and_expiry_blocks_release(self):
+        self.create()
+        self.cmd('recipient', 'accept')
+        self.cmd('driver', 'claim')
+        b = self.cmd('driver', 'pickup', confirmed=True)
+        self.assertEqual(b['custodianId'], 'sender')
+        self.assertEqual(b['stage'], 'assigned')
+        with self.assertRaises(app.Problem):
+            self.cmd('driver', 'release', confirmed=True)
+        with self.assertRaises(app.Problem):
+            self.cmd('recipient', 'release', confirmed=True)
+        s = app.state(self.db)
+        s['batches'][0]['deadline'] = time.time() - 1
+        app.save(self.db, s)
+        app.load_for(self.db, self.people['sender'])
+        with self.assertRaises(app.Problem):
+            self.cmd('sender', 'release', confirmed=True)
+        self.assertEqual(app.state(self.db)['batches'][0]['custodianId'], 'sender')
+
+    def test_recipient_rejection_preserves_driver_custody(self):
+        self.transit()
+        with self.assertRaises(app.Problem):
+            self.cmd('recipient', 'acceptDelivery', confirmed=True)
+        self.cmd('driver', 'arrive', confirmed=True)
+        with self.assertRaises(app.Problem):
+            self.cmd('sender', 'rejectDelivery', confirmed=True, reason='Damaged packaging')
+        b = self.cmd('recipient', 'rejectDelivery', confirmed=True, reason='Damaged packaging')
+        self.assertEqual(b['stage'], 'waste')
+        self.assertEqual(b['custodianId'], 'driver')
+        self.assertNotIn('receipt', b)
+
+    def test_recovery_handover_between_haulers_and_rejection(self):
+        self.transit()
+        self.cmd('driver', 'waste', reason='Packaging damaged in transport')
+        self.cmd('recovery', 'assess', route='Compost', confirmed=True)
+        self.db.execute("INSERT INTO users SELECT 'hauler2','hauler2@test.local','Second hauler','driver',salt,password,1,100,location,1 FROM users WHERE id='driver'")
+        self.people['hauler2'] = dict(self.db.execute("SELECT * FROM users WHERE id='hauler2'").fetchone())
+        self.cmd('hauler2', 'claim')
+        b = self.cmd('hauler2', 'pickup', confirmed=True)
+        self.assertEqual(b['custodianId'], 'driver')
+        with self.assertRaises(app.Problem):
+            self.cmd('sender', 'release', confirmed=True)
+        b = self.cmd('driver', 'release', confirmed=True)
+        self.assertEqual(b['custodianId'], 'hauler2')
+        self.cmd('hauler2', 'arrive', confirmed=True)
+        b = self.cmd('recovery', 'receive', measuredKg=10, suitable=False, confirmed=True, reason='Contaminated material')
+        self.assertEqual(b['custodianId'], 'hauler2')
+
+    def test_existing_holder_can_continue_recovery_transport(self):
+        self.transit()
+        self.cmd('driver', 'waste', reason='Damaged packaging')
+        self.cmd('recovery', 'assess', route='BSFL', confirmed=True)
+        self.cmd('driver', 'claim')
+        b = self.cmd('driver', 'pickup', confirmed=True)
+        self.assertEqual(b['stage'], 'collected')
+        self.assertEqual(b['custodianId'], 'driver')
+        self.assertNotIn('pickupRequest', b)
+
     def test_expiry_preserves_custody(self):
         self.transit()
         s = app.state(self.db)
@@ -77,6 +141,10 @@ class WorkflowTests(unittest.TestCase):
         self.cmd('recovery', 'assess', route='BSFL', confirmed=True)
         self.cmd('driver', 'claim')
         self.cmd('driver', 'pickup', confirmed=True)
+        self.cmd('sender', 'release', confirmed=True)
+        with self.assertRaises(app.Problem):
+            self.cmd('recovery', 'receive', measuredKg=9, suitable=True, confirmed=True)
+        self.cmd('driver', 'arrive', confirmed=True)
         with self.assertRaises(app.Problem):
             self.cmd('recovery', 'process')
         self.cmd('recovery', 'receive', measuredKg=9, suitable=True, confirmed=True)
@@ -92,6 +160,8 @@ class WorkflowTests(unittest.TestCase):
         self.cmd('recovery', 'assess', route='Compost', confirmed=True)
         self.cmd('driver', 'claim')
         self.cmd('driver', 'pickup', confirmed=True)
+        self.cmd('sender', 'release', confirmed=True)
+        self.cmd('driver', 'arrive', confirmed=True)
         b = self.cmd('recovery', 'receive', measuredKg=10, suitable=False, confirmed=True, reason='Packaging contamination')
         self.assertEqual(b['stage'], 'rejected')
         self.assertNotIn('completedAt', b)

@@ -18,7 +18,8 @@ const stages = {
   'waste': 'Needs recovery',
   'assessed': 'Awaiting hauler',
   'recoveryAssigned': 'Recovery pickup',
-  'collected': 'Awaiting inspection',
+  'collected': 'On the way to facility',
+  'facilityArrival': 'Awaiting facility inspection',
   'facilityAccepted': 'Ready to process',
   'processing': 'In processing',
   'completed': 'Recovered',
@@ -561,6 +562,13 @@ class _WorkspaceState extends State<Workspace> {
     return minutes > 0 ? '$minutes min remaining' : 'Food window elapsed';
   }
 
+  String journeyStatus(Map<String, dynamic> b) =>
+      b['stage'] == 'transit' && b['foodArrivalAt'] != null
+      ? b['deliveryAcceptedAt'] != null
+            ? 'Awaiting verified handover'
+            : 'Awaiting recipient inspection'
+      : stages[b['stage']] ?? b['stage'];
+
   Widget information(String label, String value) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 9),
     child: Row(
@@ -656,7 +664,7 @@ class _WorkspaceState extends State<Workspace> {
             runSpacing: 8,
             children: [
               Text(
-                stages[b['stage']] ?? b['stage'],
+                journeyStatus(b),
                 style: const TextStyle(
                   color: Palette.accent,
                   fontWeight: FontWeight.w600,
@@ -998,13 +1006,16 @@ class _WorkspaceState extends State<Workspace> {
                 ),
                 Editorial(b['name'], size: 32),
                 gap(14),
-                Text('${stages[stage]} · ${b['kg']} kg'),
+                Text('${journeyStatus(b)} · ${b['kg']} kg'),
                 gap(16),
                 Surface(
                   padding: 16,
                   child: Column(
                     children: [
-                      information('Pickup', '${b['location']}'),
+                      information(
+                        'Pickup',
+                        '${b['collectionLocation'] ?? b['location']}',
+                      ),
                       information(
                         'Destination',
                         b['routeDestination'] ?? nameFor(b['recipientId']),
@@ -1029,6 +1040,15 @@ class _WorkspaceState extends State<Workspace> {
                         ? null
                         : (b['alternativeEta'] as num).round(),
                     expired: stage == 'waste',
+                    arrived:
+                        (stage == 'transit' && b['foodArrivalAt'] != null) ||
+                        [
+                          'facilityArrival',
+                          'facilityAccepted',
+                          'processing',
+                          'completed',
+                          'delivered',
+                        ].contains(stage),
                   ),
                   gap(10),
                   Text(
@@ -1126,21 +1146,72 @@ class _WorkspaceState extends State<Workspace> {
                 if (api.role == 'driver' &&
                     ['accepted', 'assessed'].contains(stage))
                   button('claim'),
+                if (b['pickupRequest'] != null) ...[
+                  gap(12),
+                  SmallNote(
+                    'Pickup checked by ${nameFor(b['driverId'])}. Awaiting release confirmation from ${nameFor(b['pickupRequest']['holderId'])}.',
+                  ),
+                  if (b['pickupRequest']['holderId'] == uid)
+                    button(
+                      'release',
+                      confirmation:
+                          'I physically handed this material to the assigned driver after checking their identity.',
+                    ),
+                ],
                 if (ownDriver &&
+                    b['pickupRequest'] == null &&
                     ['assigned', 'recoveryAssigned'].contains(stage))
                   button(
                     'pickup',
-                    confirmation:
-                        'I checked the packaging and condition and collected the load.',
+                    confirmation: b['custodianId'] == uid
+                        ? 'I already hold this material and have checked its condition before beginning recovery transport.'
+                        : 'I am at the collection point and have checked the packaging and condition. The current holder must confirm release.',
                   ),
-                if (ownDriver && stage == 'transit')
+                if (ownDriver &&
+                    ((stage == 'transit' && b['foodArrivalAt'] == null) ||
+                        stage == 'collected'))
+                  button(
+                    'arrive',
+                    confirmation:
+                        'I have arrived at the assigned destination with the material.',
+                  ),
+                if (b['recipientId'] == uid &&
+                    stage == 'transit' &&
+                    b['foodArrivalAt'] != null) ...[
+                  if (b['deliveryAcceptedAt'] == null)
+                    button(
+                      'acceptDelivery',
+                      confirmation:
+                          'I inspected the food, packaging and condition and accept this delivery.',
+                    ),
+                  button(
+                    'rejectDelivery',
+                    fields: {'reason': 'Why this delivery is unsuitable'},
+                    confirmation:
+                        'I inspected the delivery and refuse it. The driver retains custody for recovery.',
+                  ),
+                ],
+                if (ownDriver &&
+                    stage == 'transit' &&
+                    b['foodArrivalAt'] != null &&
+                    b['deliveryAcceptedAt'] == null) ...[
+                  gap(12),
+                  const SmallNote(
+                    'Arrival recorded. The recipient must inspect and accept before you can verify handover.',
+                  ),
+                ],
+                if (ownDriver &&
+                    stage == 'transit' &&
+                    b['deliveryAcceptedAt'] != null)
                   button(
                     'deliver',
                     fields: {'code': 'Recipient handover code'},
                     confirmation:
                         'The recipient inspected and accepted the food.',
                   ),
-                if (ownDriver && ['assigned', 'transit'].contains(stage)) ...[
+                if (ownDriver &&
+                    b['foodArrivalAt'] == null &&
+                    ['assigned', 'transit'].contains(stage)) ...[
                   button(
                     'delay',
                     fields: {
@@ -1152,6 +1223,7 @@ class _WorkspaceState extends State<Workspace> {
                   button('reroute'),
                 ],
                 if (admin &&
+                    b['foodArrivalAt'] == null &&
                     ['accepted', 'assigned', 'transit'].contains(stage))
                   button(
                     'offer',
@@ -1192,6 +1264,12 @@ class _WorkspaceState extends State<Workspace> {
                         'I verified material suitability, separation from packaging and facility capacity.',
                   ),
                 if (ownFacility && stage == 'collected') ...[
+                  gap(12),
+                  const SmallNote(
+                    'The hauler is transporting this material. Inspection becomes available after arrival is confirmed.',
+                  ),
+                ],
+                if (ownFacility && stage == 'facilityArrival') ...[
                   button(
                     'receive',
                     fields: {'measuredKg': 'Measured weight (kg)'},
@@ -1265,6 +1343,10 @@ const actionTitles = {
   'decline': 'Decline transfer',
   'claim': 'Accept collection task',
   'pickup': 'Confirm pickup',
+  'release': 'Confirm release to driver',
+  'arrive': 'Confirm arrival at destination',
+  'acceptDelivery': 'Accept delivery after inspection',
+  'rejectDelivery': 'Reject delivery',
   'deliver': 'Verify handover',
   'delay': 'Update arrival estimates',
   'reroute': 'Use alternative route',

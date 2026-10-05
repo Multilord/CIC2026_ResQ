@@ -544,6 +544,7 @@ class RouteMap extends StatelessWidget {
     required this.currentEta,
     this.alternativeEta,
     this.expired = false,
+    this.arrived = false,
   });
 
   final String origin;
@@ -551,11 +552,13 @@ class RouteMap extends StatelessWidget {
   final int currentEta;
   final int? alternativeEta;
   final bool expired;
+  final bool arrived;
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label:
-        'Route from $origin to $destination. Current estimate $currentEta minutes${alternativeEta == null ? '' : ', alternative $alternativeEta minutes'}.',
+    label: arrived
+        ? 'Arrival confirmed at $destination.'
+        : 'Route from $origin to $destination. Current estimate $currentEta minutes${alternativeEta == null ? '' : ', alternative $alternativeEta minutes'}.',
     child: ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
@@ -566,8 +569,11 @@ class RouteMap extends StatelessWidget {
               child: CustomPaint(
                 painter: _RoutePainter(
                   showAlternative:
-                      alternativeEta != null && alternativeEta! < currentEta,
+                      !arrived &&
+                      alternativeEta != null &&
+                      alternativeEta! < currentEta,
                   expired: expired,
+                  arrived: arrived,
                 ),
               ),
             ),
@@ -580,13 +586,17 @@ class RouteMap extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   Pill(
-                    expired
+                    arrived
+                        ? 'Arrival confirmed'
+                        : expired
                         ? 'Food window elapsed'
                         : 'Current · $currentEta min',
                     color: expired ? Palette.warning : Palette.text,
                     icon: expired ? Icons.timer_off_outlined : Icons.traffic,
                   ),
-                  if (alternativeEta != null && alternativeEta! < currentEta)
+                  if (!arrived &&
+                      alternativeEta != null &&
+                      alternativeEta! < currentEta)
                     Pill(
                       'Faster route · $alternativeEta min',
                       icon: Icons.alt_route,
@@ -659,9 +669,14 @@ class RouteMap extends StatelessWidget {
 }
 
 class _RoutePainter extends CustomPainter {
-  const _RoutePainter({required this.showAlternative, required this.expired});
+  const _RoutePainter({
+    required this.showAlternative,
+    required this.expired,
+    required this.arrived,
+  });
   final bool showAlternative;
   final bool expired;
+  final bool arrived;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -744,7 +759,7 @@ class _RoutePainter extends CustomPainter {
         Paint()..color = point == end ? Palette.accent : Palette.text,
       );
     }
-    final vehicle = Offset(size.width * .53, size.height * .54);
+    final vehicle = arrived ? end : Offset(size.width * .53, size.height * .54);
     canvas.drawCircle(vehicle, 13, Paint()..color = Palette.bg);
     canvas.drawCircle(
       vehicle,
@@ -756,5 +771,6 @@ class _RoutePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RoutePainter oldDelegate) =>
       oldDelegate.showAlternative != showAlternative ||
-      oldDelegate.expired != expired;
+      oldDelegate.expired != expired ||
+      oldDelegate.arrived != arrived;
 }

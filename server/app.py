@@ -271,6 +271,7 @@ def expire(s):
         if b['stage'] in ACTIVE and b['deadline'] <= time.time():
             b['stage'] = 'waste'
             b['offer'] = None
+            b.pop('pickupRequest', None)
             b['expiredAt'] = time.time()
             b['incident'] = 'Approved food window elapsed. Facility suitability review is required.'
             event(s, SYSTEM, 'Approved food window elapsed. Diverted to recovery; current custody retained.', b)
@@ -293,7 +294,7 @@ def load_for(db, user):
         involved = user['id'] in [b['senderId'], b.get('recipientId'), b.get('driverId'), b.get('facilityId'), (b.get('offer') or {}).get('target'), *b.get('participants', [])]
         market = user['approved'] and ((user['role'] == 'recipient' and b['stage'] == 'listed') or (user['role'] == 'driver' and b['stage'] in ['accepted', 'assessed']) or (user['role'] == 'recovery' and b['stage'] in ['waste', 'rejected']))
         if user['role'] == 'admin' or involved or market:
-            if user['id'] != b.get('recipientId'):
+            if user['id'] != b.get('recipientId') or b['stage'] != 'transit' or not b.get('deliveryAcceptedAt'):
                 b.pop('handoverCode', None)
             if user['role'] != 'admin' and not involved:
                 b['history'] = []
@@ -309,14 +310,21 @@ def capacity(s, uid):
         if stage in TERMINAL:
             return False
         recipient = stage in ACTIVE and b.get('recipientId') == uid
-        vehicle = stage in ['assigned', 'transit', 'recoveryAssigned', 'collected', 'waste', 'rejected', 'assessed'] and uid in [b.get('driverId'), b.get('custodianId')]
-        facility = stage in ['assessed', 'recoveryAssigned', 'collected', 'facilityAccepted', 'processing'] and b.get('facilityId') == uid
+        vehicle = stage in ['assigned', 'transit', 'recoveryAssigned', 'collected', 'facilityArrival', 'waste', 'rejected', 'assessed'] and uid in [b.get('driverId'), b.get('custodianId')]
+        facility = stage in ['assessed', 'recoveryAssigned', 'collected', 'facilityArrival', 'facilityAccepted', 'processing'] and b.get('facilityId') == uid
         return recipient or vehicle or facility
     return sum(b.get('measuredKg', b['kg']) for b in s['batches'] if reserved(b))
 
 
 def viable(b, eta=None):
     return b['deadline'] > time.time() + 60 * (b['eta'] if eta is None else eta)
+
+
+def record_pickup(b, driver_id):
+    b['stage'] = 'transit' if b['stage'] == 'assigned' else 'collected'
+    b['pickedUpAt'] = time.time()
+    b['custodianId'] = driver_id
+    b.pop('pickupRequest', None)
 
 
 def command(db, u, d):
@@ -375,6 +383,8 @@ def command(db, u, d):
         b['eta'] = eta
         b['offer'] = None
         b['handoverCode'] = str(secrets.randbelow(900000) + 100000)
+        b.pop('foodArrivalAt', None)
+        b.pop('deliveryAcceptedAt', None)
         if stage == 'listed':
             b['stage'] = 'accepted'
         msg = 'Recipient accepted the food and delivery window.'
@@ -394,12 +404,50 @@ def command(db, u, d):
         require(own_driver and stage in ['assigned', 'recoveryAssigned'], 'Pickup is not assigned to you.', 403)
         require(d.get('confirmed') is True, 'Confirm packaging and collection condition.')
         require(stage == 'recoveryAssigned' or viable(b), 'Food window is no longer viable. Report an exception.')
-        b['stage'] = 'transit' if stage == 'assigned' else 'collected'
-        b['pickedUpAt'] = time.time()
-        b['custodianId'] = u['id']
-        msg = 'Collection confirmed. Custody transferred to driver.'
+        holder = b.get('custodianId', b['senderId'])
+        if holder == u['id']:
+            record_pickup(b, u['id'])
+            msg = 'Existing holder confirmed transport to the recovery facility; custody retained.'
+        else:
+            require(not b.get('pickupRequest'), 'Pickup already awaits holder confirmation.')
+            b['pickupRequest'] = {'driverId': u['id'], 'holderId': holder, 'requestedAt': time.time()}
+            msg = 'Driver checked collection condition. Awaiting release confirmation from the current holder.'
+    elif a == 'release':
+        pending = b.get('pickupRequest') or {}
+        require(stage in ['assigned', 'recoveryAssigned'] and pending.get('holderId') == u['id'] and b.get('custodianId') == u['id'] and pending.get('driverId') == b.get('driverId'), 'No pickup handover is awaiting your confirmation.', 403)
+        require(d.get('confirmed') is True, 'Confirm you physically handed the material to the assigned driver.')
+        require(stage == 'recoveryAssigned' or viable(b), 'The food journey is no longer viable.')
+        record_pickup(b, b['driverId'])
+        msg = 'Current holder confirmed release. Both parties verified pickup; custody transferred to driver.'
+    elif a == 'arrive':
+        require(own_driver and stage in ['transit', 'collected'], 'Arrival is not assigned to you.', 403)
+        require(d.get('confirmed') is True, 'Confirm arrival at the assigned destination.')
+        b['eta'] = 0
+        if (b.get('incident') or '').startswith(('Current ETA exceeds the approved food window.', 'Delivery window at risk.')):
+            b['incident'] = ''
+        if stage == 'transit':
+            require(not b.get('foodArrivalAt'), 'Arrival has already been recorded.')
+            b['foodArrivalAt'] = time.time()
+            msg = 'Driver arrived. Awaiting recipient inspection and acceptance.'
+        else:
+            b.update(stage='facilityArrival', facilityArrivalAt=time.time())
+            msg = 'Driver arrived at the recovery facility. Awaiting weighing and inspection; driver retains custody.'
+    elif a in ['acceptDelivery', 'rejectDelivery']:
+        require(own_recipient and stage == 'transit' and b.get('foodArrivalAt'), 'No delivery is awaiting your inspection.', 403)
+        require(d.get('confirmed') is True, 'Confirm your delivery inspection decision.')
+        if a == 'acceptDelivery':
+            require(viable(b, 0), 'The approved food window has elapsed.')
+            require(not b.get('deliveryAcceptedAt'), 'Delivery inspection is already accepted.')
+            b['deliveryAcceptedAt'] = time.time()
+            msg = 'Recipient inspected and accepted the food. Driver may now verify the handover code.'
+        else:
+            b.update(stage='waste', deliveryRejectedAt=time.time(), incident='Recipient rejected delivery: ' + text(d, 'reason', 5))
+            b['offer'] = None
+            b.pop('deliveryAcceptedAt', None)
+            msg = 'Recipient rejected the food. Diverted to recovery; driver retains custody. ' + text(d, 'reason', 5)
     elif a == 'deliver':
         require(own_driver and stage == 'transit', 'Delivery is not assigned to you.', 403)
+        require(b.get('foodArrivalAt') and b.get('deliveryAcceptedAt'), 'Recipient must inspect and accept delivery before handover verification.')
         require(viable(b, 0), 'The approved food window has elapsed.')
         require(hmac.compare_digest(str(d.get('code', '')), b.get('handoverCode', 'invalid')), 'Incorrect recipient handover code.')
         require(d.get('confirmed') is True, 'Confirm the recipient accepted the condition of the food.')
@@ -411,13 +459,17 @@ def command(db, u, d):
         msg = 'Recipient code verified. Delivery receipt recorded.'
     elif a == 'delay':
         require(own_driver and stage in ['assigned', 'transit'], 'Only the assigned driver can update the journey.', 403)
+        require(not b.get('foodArrivalAt'), 'Arrival is recorded. Resolve the handover before changing the journey.')
         b['eta'] = number(d, 'eta', 1, 240)
+        b.pop('foodArrivalAt', None)
+        b.pop('deliveryAcceptedAt', None)
         # Entered by driver from navigation; never invented by the AI.
         b['alternativeEta'] = number(d, 'alternativeEta', 1, 240)
         b['rerouted'] = False
         msg = 'Driver updated arrival estimates; coordination review requested.'
     elif a == 'reroute':
         require((own_driver or admin) and stage in ['assigned', 'transit'], 'No active journey to reroute.', 403)
+        require(not b.get('foodArrivalAt'), 'Arrival is recorded. Resolve the handover before rerouting.')
         eta = b.get('alternativeEta', b['eta'])
         require(eta < b['eta'] and viable(b, eta), 'No viable faster route has been supplied by the driver.')
         b['eta'] = eta
@@ -425,6 +477,7 @@ def command(db, u, d):
         msg = 'Alternative route selected for the same recipient.'
     elif a == 'offer':
         require(admin and stage in ['accepted', 'assigned', 'transit'], 'Admin access and active journey required.', 403)
+        require(not b.get('foodArrivalAt'), 'Resolve the delivery inspection before offering a different recipient.')
         require(not (b.get('alternativeEta', b['eta']) < b['eta'] and viable(b, b.get('alternativeEta'))), 'Try the viable same-recipient route first.')
         target = db.execute("SELECT * FROM users WHERE id=? AND role='recipient' AND approved=1 AND available=1", (d.get('target'),)).fetchone()
         require(target is not None and target['id'] != b['recipientId'], 'Choose a different verified recipient.')
@@ -438,6 +491,7 @@ def command(db, u, d):
         if a == 'cancel':
             require(own_sender and stage == 'listed', 'Only an unclaimed listing can be cancelled.')
         b['stage'] = 'waste' if a == 'waste' else 'cancelled'
+        b.pop('pickupRequest', None)
         b['offer'] = None
         msg = ('Diverted to recovery; custody retained. ' if a == 'waste' else 'Listing cancelled. ') + text(d, 'reason', 5)
     elif a == 'assess':
@@ -447,9 +501,14 @@ def command(db, u, d):
         require(route in ['BSFL', 'Compost', 'Biogas'], 'Choose a recovery route.')
         require(u['available'] and capacity(s, u['id']) + b['kg'] <= u['capacity'], 'Facility capacity exceeded or facility unavailable.')
         b.update(facilityId=u['id'], route=route, stage='assessed', driverId='')
+        b.pop('pickupRequest', None)
+        b['routeDestination'] = u['name']
+        holder = db.execute('SELECT * FROM users WHERE id=?', (b.get('custodianId', b['senderId']),)).fetchone()
+        b['collectionLocation'] = b['location'] if b.get('custodianId', b['senderId']) == b['senderId'] else holder['location']
+        b['routeOrigin'] = b['collectionLocation']
         msg = f'{route} facility accepted the collection request after suitability review.'
     elif a == 'receive':
-        require(own_facility and stage == 'collected', 'This batch is not awaiting your inspection.', 403)
+        require(own_facility and stage == 'facilityArrival', 'Driver must confirm arrival before facility inspection.', 403)
         weight = number(d, 'measuredKg', .1, 500)
         require(d.get('confirmed') is True, 'Record an inspection confirmation.')
         if d.get('suitable'):
@@ -458,7 +517,7 @@ def command(db, u, d):
             b['custodianId'] = u['id']
             msg = 'Weighed, inspected and accepted for controlled processing.'
         else:
-            b.update(stage='rejected', facilityId='', driverId='')
+            b.update(stage='rejected', facilityId='', driverId='', measuredKg=weight)
             msg = 'Facility rejected the material: ' + text(d, 'reason', 5)
     elif a == 'process':
         require(own_facility and stage == 'facilityAccepted', 'Only the receiving facility can start processing.', 403)
@@ -498,7 +557,7 @@ def coordinate():
         save(db, s)
         if s['paused']:
             return
-        work = [b for b in s['batches'] if b['stage'] in ACTIVE + ['waste', 'assessed', 'rejected'] and AI_REVIEWED.get(b['id']) != (b['version'], viable(b))]
+        work = [b for b in s['batches'] if not (b['stage'] == 'transit' and b.get('foodArrivalAt')) and b['stage'] in ACTIVE + ['waste', 'assessed', 'rejected'] and AI_REVIEWED.get(b['id']) != (b['version'], viable(b))]
         if not work:
             return
         # Exclude names, exact locations, account details, and handover secrets.
