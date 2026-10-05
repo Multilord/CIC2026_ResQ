@@ -84,9 +84,29 @@ class WorkflowTests(unittest.TestCase):
         user = dict(self.db.execute("SELECT * FROM users WHERE id='role-sender'").fetchone())
         user.update(role='recipient', accountRole='member')
         batches = app.load_for(self.db, user)['batches']
-        self.assertEqual({b['stage'] for b in batches}, {'listed', 'accepted', 'delivered'})
-        self.assertEqual(len(batches), 4)
+        self.assertEqual({b['stage'] for b in batches}, {'listed', 'accepted', 'delivered', 'transit'})
+        self.assertEqual(len(batches), 8)
         self.assertTrue(all(b['senderId'] != user['id'] for b in batches))
+
+    def test_prepared_recipient_can_confirm_arrival_then_driver_completes(self):
+        app.seed_prepared(self.db, replace=True)
+        app.seed_marketplace(self.db, replace=True)
+        for uid, bid in [('role-recipient', 'RH-209'), ('role-sender', 'RH-308')]:
+            recipient = dict(self.db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone())
+            recipient.update(role='recipient', accountRole='member')
+            b = next(b for b in app.load_for(self.db, recipient)['batches'] if b['id'] == bid)
+            self.assertNotIn('handoverCode', b)
+            app.command(self.db, recipient, {'action': 'acceptDelivery', 'id': bid, 'version': b['version'], 'confirmed': True})
+            b = next(b for b in app.load_for(self.db, recipient)['batches'] if b['id'] == bid)
+            self.assertIn('handoverCode', b)
+            driver = dict(self.db.execute("SELECT * FROM users WHERE id='role-driver'").fetchone())
+            app.command(self.db, driver, {'action': 'deliver', 'id': bid, 'version': b['version'], 'confirmed': True, 'code': b['handoverCode']})
+            saved = next(b for b in app.state(self.db)['batches'] if b['id'] == bid)
+            self.assertEqual(saved['stage'], 'delivered')
+            self.assertEqual(saved['custodianId'], uid)
+        ledger = app.state(self.db)['earnings']
+        self.assertEqual(len(ledger), len({e['id'] for e in ledger}))
+        self.assertEqual(len(ledger), 5)
 
     def test_roles_and_stale_versions_are_enforced(self):
         b = self.create()
