@@ -29,7 +29,7 @@ flutter run -d chrome --web-port 4174
 
 First-start admin access is written to `server/data/admin-access.txt` and excluded from Git. Register other roles in the app, then verify partners through Admin → Manage.
 
-Prepared role accounts use password `ResQDemo2026!`: `sender@resq.demo`, `recipient@resq.demo`, `pantry@resq.demo`, `driver@resq.demo`, and `recovery@resq.demo`. Five demo journeys show listing, recipient acceptance, delayed routing, automatic expiry into waste recovery, and completed BSFL processing. Admin can reset their timestamps from the app.
+Prepared role accounts use password `ResQReady2026!`: `sender@resq.local`, `recipient@resq.local`, `pantry@resq.local`, `driver@resq.local`, and `recovery@resq.local`. Five journeys show listing, recipient acceptance, delayed routing, automatic expiry into waste recovery, and completed BSFL processing. Admin can restart their timestamps from the app.
 
 - [Setup, Gemini and Android instructions](resq_haul_mobile/README.md)
 - [Project flow and stack](resq_haul_mobile/docs/PROJECT_FLOW_AND_STACK.md)

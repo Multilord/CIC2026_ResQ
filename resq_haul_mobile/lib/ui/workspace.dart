@@ -293,7 +293,7 @@ class _WorkspaceState extends State<Workspace> {
               ? 'Paused by admin'
               : api.state!['geminiConfigured']
               ? api.state!['ai']['status']
-              : 'Local demo automation active',
+              : 'Automated coordination active',
           style: const TextStyle(fontSize: 20),
         ),
         gap(8),
@@ -326,21 +326,21 @@ class _WorkspaceState extends State<Workspace> {
         ),
         gap(8),
         TextButton.icon(
-          onPressed: busy ? null : resetDemo,
+          onPressed: busy ? null : restartJourneys,
           icon: const Icon(Icons.restart_alt),
-          label: const Text('Reset demo data and timings'),
+          label: const Text('Restart journey timings'),
         ),
       ],
     ),
   );
 
-  Future<void> resetDemo() async {
+  Future<void> restartJourneys() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reset demo data?'),
+        title: const Text('Restart journey timings?'),
         content: const Text(
-          'This refreshes the five prepared demo journeys and restarts their time windows. Other accounts and non-demo listings remain available.',
+          'This refreshes the five prepared journeys and restarts their time windows. Other accounts and listings remain available.',
         ),
         actions: [
           TextButton(
@@ -349,13 +349,13 @@ class _WorkspaceState extends State<Workspace> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Reset demo'),
+            child: const Text('Restart journeys'),
           ),
         ],
       ),
     );
     if (confirmed == true) {
-      await run(() => api.command('resetDemo'));
+      await run(() => api.command('resetPrepared'));
     }
   }
 
@@ -793,6 +793,17 @@ class _WorkspaceState extends State<Workspace> {
                   gap(14),
                   const Eyebrow('ROUTING'),
                   gap(7),
+                  RouteMap(
+                    origin: b['routeOrigin'] ?? b['location'],
+                    destination:
+                        b['routeDestination'] ?? nameFor(b['recipientId']),
+                    currentEta: (b['eta'] as num).round(),
+                    alternativeEta: b['alternativeEta'] == null
+                        ? null
+                        : (b['alternativeEta'] as num).round(),
+                    expired: stage == 'waste',
+                  ),
+                  gap(10),
                   Text(b['routeSummary']),
                   if (b['alternativeRouteSummary'] != null) ...[
                     gap(6),

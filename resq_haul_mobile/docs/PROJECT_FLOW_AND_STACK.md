@@ -35,6 +35,7 @@
 | Layer | Implementation |
 |---|---|
 | App | Flutter 3.38 / Dart 3.10, Material 3, navy/yellow tokens, bundled editorial font |
+| Route display | Responsive Flutter map canvas with origin/destination markers, current and alternative paths, vehicle position and ETA labels |
 | Networking | Dart http, memory-only bearer sessions, 10-second polling |
 | Backend | Python standard-library HTTP service, loopback by default |
 | Data | SQLite, serialized transactional commands, persistent users/sessions/recoveries/audit events |
@@ -48,4 +49,4 @@ Google reference: [structured output with generateContent](https://ai.google.dev
 
 ## Remaining integrations
 
-Managed identity/password recovery, HTTPS deployment, rate limiting, monitoring/backups, real mapping/ETA providers, push messages, IoT hardware, payments and facility-specific policies are future integrations. Current matching checks capacity/status, not geographic optimization or dietary preferences. Human suitability checks are mandatory. Live Gemini calls require credentials and have not been verified on this machine.
+Managed identity/password recovery, HTTPS deployment, rate limiting, monitoring/backups, live road-map/ETA providers, push messages, IoT hardware, payments and facility-specific policies are future integrations. The in-app route map visualizes the prepared paths and supplied ETAs; it does not claim live traffic or GPS navigation. Current matching checks capacity/status, not geographic optimization or dietary preferences. Human suitability checks are mandatory. Live Gemini calls require credentials and have not been verified on this machine.

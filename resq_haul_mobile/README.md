@@ -12,19 +12,19 @@ python server/app.py
 
 The API runs at http://127.0.0.1:4175. First-start admin credentials are written to `server/data/admin-access.txt`, excluded from Git. Register Sender accounts in the app. Recipient, Driver and Facility accounts need verification in Admin → Manage.
 
-## Prepared demo accounts
+## Prepared role accounts
 
-The local API creates these verified presentation accounts. They all use password `ResQDemo2026!`:
+The local API creates these verified role accounts. They all use password `ResQReady2026!`:
 
 | Role | Email |
 |---|---|
-| Sender | `sender@resq.demo` |
-| Recipient | `recipient@resq.demo` |
-| Alternate recipient | `pantry@resq.demo` |
-| Driver / Hauler | `driver@resq.demo` |
-| Recovery Facility | `recovery@resq.demo` |
+| Sender | `sender@resq.local` |
+| Recipient | `recipient@resq.local` |
+| Alternate recipient | `pantry@resq.local` |
+| Driver / Hauler | `driver@resq.local` |
+| Recovery Facility | `recovery@resq.local` |
 
-Five prepared journeys cover a new listing, an accepted delayed delivery with a faster route, a five-minute expiry demonstration, a batch already diverted to recovery and a completed BSFL recovery. Admin can select **Reset demo data and timings** to restore them without deleting non-demo accounts or listings. Credentials are also written locally to `server/data/demo-access.txt`.
+Five prepared journeys cover a new listing, an accepted delayed delivery with a faster route, a five-minute expiry transition, a batch already diverted to recovery and a completed BSFL recovery. Admin can select **Restart journey timings** to refresh them without deleting other accounts or listings. Credentials are also written locally to `server/data/role-access.txt`.
 
 In another terminal:
 
@@ -70,6 +70,6 @@ See [Flow and stack](docs/PROJECT_FLOW_AND_STACK.md) and [Verification](docs/VER
 
 ## Limits
 
-Accounts, data, permissions, transitions and audit history are real and shared through the local API. The network starts with five resettable demo journeys. Sessions last 12 hours and stay in memory; reopening the app requires sign-in. The original offline walkthrough and tests remain for reference, but main.dart launches the new app.
+Accounts, data, permissions, transitions and audit history are shared through the local API. The network starts with five prepared journeys. Sessions last 12 hours and stay in memory; reopening the app requires sign-in. The original offline walkthrough and tests remain for reference, but main.dart launches the new app.
 
 Maps/GPS, route-provider ETAs, push notifications, IoT sensors, payments, email verification, password recovery and managed deployment are not connected. Participant-entered ETAs are estimates; recorded sale prices are not payments. Activity refreshes every 10 seconds. Gemini has not been live-tested without credentials. This local HTTP service is for a controlled pilot, not a public production deployment.

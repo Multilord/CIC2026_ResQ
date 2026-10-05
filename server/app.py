@@ -72,7 +72,7 @@ def connect():
     return db
 
 
-def initialize(seed_demo_data=None):
+def initialize(seed_prepared_data=None):
     DB.parent.mkdir(parents=True, exist_ok=True)
     with connect() as db:
         db.executescript('''
@@ -89,9 +89,9 @@ def initialize(seed_demo_data=None):
             db.execute('INSERT INTO users VALUES(?,?,?,?,?,?,?,?,?,?)', ('admin', email, 'Network administrator', 'admin', salt, password_hash(password, salt), 1, 1000, 'Kuala Lumpur', 1))
             # Local-only bootstrap credentials, ignored by git. Never logged or sent to clients.
             (DB.parent / 'admin-access.txt').write_text(f'Email: {email}\nPassword: {password}\n', encoding='utf-8')
-        use_demo = os.environ.get('RESQ_DEMO_DATA', '1').lower() not in ['0', 'false', 'no'] if seed_demo_data is None else seed_demo_data
-        if use_demo:
-            seed_demo(db)
+        use_prepared = os.environ.get('RESQ_PREPARED_DATA', '1').lower() not in ['0', 'false', 'no'] if seed_prepared_data is None else seed_prepared_data
+        if use_prepared:
+            seed_prepared(db)
 
 
 def public(u):
@@ -117,46 +117,49 @@ def event(s, actor, message, b=None):
 SYSTEM = {'id': 'system', 'name': 'Coordination service'}
 
 
-DEMO_PASSWORD = 'ResQDemo2026!'
-DEMO_USERS = [
-    ('demo-sender', 'sender@resq.demo', 'KL Event Collective', 'sender', 250, 'Sentul, Kuala Lumpur'),
-    ('demo-recipient', 'recipient@resq.demo', 'Community Kitchen', 'recipient', 120, 'Chow Kit, Kuala Lumpur'),
-    ('demo-recipient-near', 'pantry@resq.demo', 'Neighbourhood Pantry', 'recipient', 80, 'Titiwangsa, Kuala Lumpur'),
-    ('demo-driver', 'driver@resq.demo', 'Raju · Hauler 07', 'driver', 90, 'Kuala Lumpur'),
-    ('demo-recovery', 'recovery@resq.demo', 'Klang Valley BSFL Centre', 'recovery', 500, 'Selayang, Kuala Lumpur'),
+PREPARED_PASSWORD = 'ResQReady2026!'
+PREPARED_USERS = [
+    ('role-sender', 'sender@resq.local', 'KL Event Collective', 'sender', 250, 'Sentul, Kuala Lumpur'),
+    ('role-recipient', 'recipient@resq.local', 'Community Kitchen', 'recipient', 120, 'Chow Kit, Kuala Lumpur'),
+    ('role-recipient-near', 'pantry@resq.local', 'Neighbourhood Pantry', 'recipient', 80, 'Titiwangsa, Kuala Lumpur'),
+    ('role-driver', 'driver@resq.local', 'Raju · Hauler 07', 'driver', 90, 'Kuala Lumpur'),
+    ('role-recovery', 'recovery@resq.local', 'Klang Valley BSFL Centre', 'recovery', 500, 'Selayang, Kuala Lumpur'),
 ]
 
 
-def _demo_event(at, actor, message, batch_id, user_id):
+def _prepared_event(at, actor, message, batch_id, user_id):
     return {
         'id': secrets.token_hex(8), 'at': at, 'actor': actor,
         'message': message, 'batchId': batch_id, 'userId': user_id,
     }
 
 
-def seed_demo(db, replace=False):
+def seed_prepared(db, replace=False):
     """Create repeatable local presentation data without Gemini or external services."""
     salt = secrets.token_hex(16)
-    hashed = password_hash(DEMO_PASSWORD, salt)
-    for uid, email, name, role, user_capacity, location in DEMO_USERS:
+    hashed = password_hash(PREPARED_PASSWORD, salt)
+    for uid, email, name, role, user_capacity, location in PREPARED_USERS:
         db.execute(
             'INSERT OR IGNORE INTO users VALUES(?,?,?,?,?,?,?,?,?,?)',
             (uid, email, name, role, salt, hashed, 1, user_capacity, location, 1),
         )
     s = state(db)
-    demo_ids = {'DEMO-LISTED', 'DEMO-ROUTE', 'DEMO-EXPIRY', 'DEMO-RECOVERY', 'DEMO-COMPLETE'}
-    if not replace and demo_ids.intersection({b['id'] for b in s['batches']}):
+    prepared_ids = {'RH-201', 'RH-202', 'RH-203', 'RH-204', 'RH-205'}
+    legacy_ids = {'DEMO-LISTED', 'DEMO-ROUTE', 'DEMO-EXPIRY', 'DEMO-RECOVERY', 'DEMO-COMPLETE'}
+    all_prepared_ids = prepared_ids | legacy_ids
+    if not replace and prepared_ids.intersection({b['id'] for b in s['batches']}):
         return
-    if replace:
-        s['batches'] = [b for b in s['batches'] if b['id'] not in demo_ids]
-        s['events'] = [e for e in s['events'] if e.get('batchId') not in demo_ids]
+    if replace or legacy_ids.intersection({b['id'] for b in s['batches']}):
+        s['batches'] = [b for b in s['batches'] if b['id'] not in all_prepared_ids]
+        s['events'] = [e for e in s['events'] if e.get('batchId') not in all_prepared_ids]
+        db.execute("DELETE FROM users WHERE id IN ('demo-sender','demo-recipient','demo-recipient-near','demo-driver','demo-recovery')")
     now = time.time()
 
     def batch(batch_id, name, kg, category, minutes, eta, stage='listed', **extra):
         created = now - extra.pop('ageMinutes', 4) * 60
         b = {
             'id': batch_id, 'version': 1, 'name': name,
-            'senderId': 'demo-sender', 'source': 'KL Event Collective',
+            'senderId': 'role-sender', 'source': 'KL Event Collective',
             'senderType': 'Event host', 'location': extra.pop('location', 'Sentul Event Hall · loading bay B'),
             'kg': kg, 'category': category, 'storage': extra.pop('storage', 'Chilled'),
             'allergens': extra.pop('allergens', 'None declared'),
@@ -164,96 +167,101 @@ def seed_demo(db, replace=False):
             'stage': stage, 'donate': True, 'price': 0,
             'recipientId': '', 'driverId': '', 'facilityId': '',
             'offer': None, 'rerouted': False, 'history': [],
-            'custodianId': 'demo-sender', 'participants': ['demo-sender'],
+            'custodianId': 'role-sender', 'participants': ['role-sender'],
             **extra,
         }
-        listed = _demo_event(created, 'KL Event Collective', 'Surplus details verified and published for the recovery network.', batch_id, 'demo-sender')
+        listed = _prepared_event(created, 'KL Event Collective', 'Surplus details verified and published for the recovery network.', batch_id, 'role-sender')
         b['history'].append(listed)
         return b, [listed]
 
     listed, listed_events = batch(
-        'DEMO-LISTED', 'Conference buffet rice and vegetables', 18, 'Meals', 75, 24,
+        'RH-201', 'Conference buffet rice and vegetables', 18, 'Meals', 75, 24,
         storage='Hot-held', allergens='Soy; separate allergen label attached',
         routeSummary='Sentul Event Hall → Community Kitchen via Jalan Ipoh',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
     )
 
     route, route_events = batch(
-        'DEMO-ROUTE', 'Packed event lunches', 20, 'Meals', 38, 46,
-        stage='transit', ageMinutes=22, recipientId='demo-recipient',
-        driverId='demo-driver', custodianId='demo-driver',
-        participants=['demo-sender', 'demo-recipient', 'demo-driver'],
+        'RH-202', 'Packed event lunches', 20, 'Meals', 38, 46,
+        stage='transit', ageMinutes=22, recipientId='role-recipient',
+        driverId='role-driver', custodianId='role-driver',
+        participants=['role-sender', 'role-recipient', 'role-driver'],
         handoverCode='482731', pickedUpAt=now - 8 * 60,
         alternativeEta=18,
         routeSummary='Sentul → Chow Kit via Jalan Tun Razak · congestion reported',
         alternativeRouteSummary='Sentul → Chow Kit via Jalan Ipoh · 28 min faster',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
         incident='Current ETA exceeds the approved food window. Use the validated alternative route.',
     )
     for at, actor, message, uid in [
-        (now-18*60, 'Community Kitchen', 'Recipient accepted 20 kg within its receiving capacity.', 'demo-recipient'),
-        (now-13*60, 'Raju · Hauler 07', 'Driver accepted the collection and the 90 kg vehicle capacity check passed.', 'demo-driver'),
-        (now-8*60, 'Raju · Hauler 07', 'Pickup confirmed. Custody transferred to the driver.', 'demo-driver'),
-        (now-2*60, 'Raju · Hauler 07', 'Traffic delay reported: current ETA 46 minutes; alternative route ETA 18 minutes.', 'demo-driver'),
+        (now-18*60, 'Community Kitchen', 'Recipient accepted 20 kg within its receiving capacity.', 'role-recipient'),
+        (now-13*60, 'Raju · Hauler 07', 'Driver accepted the collection and the 90 kg vehicle capacity check passed.', 'role-driver'),
+        (now-8*60, 'Raju · Hauler 07', 'Pickup confirmed. Custody transferred to the driver.', 'role-driver'),
+        (now-2*60, 'Raju · Hauler 07', 'Traffic delay reported: current ETA 46 minutes; alternative route ETA 18 minutes.', 'role-driver'),
     ]:
-        e = _demo_event(at, actor, message, route['id'], uid); route['history'].append(e); route_events.append(e)
+        e = _prepared_event(at, actor, message, route['id'], uid); route['history'].append(e); route_events.append(e)
     route['version'] = len(route['history'])
 
     expiry, expiry_events = batch(
-        'DEMO-EXPIRY', 'Sandwiches approaching their approved limit', 12, 'Meals', 5, 12,
-        stage='transit', ageMinutes=35, recipientId='demo-recipient',
-        driverId='demo-driver', custodianId='demo-driver',
-        participants=['demo-sender', 'demo-recipient', 'demo-driver'],
+        'RH-203', 'Sandwiches approaching their approved limit', 12, 'Meals', 5, 12,
+        stage='transit', ageMinutes=35, recipientId='role-recipient',
+        driverId='role-driver', custodianId='role-driver',
+        participants=['role-sender', 'role-recipient', 'role-driver'],
         handoverCode='615204', pickedUpAt=now-10*60,
-        routeSummary='Sentul → Community Kitchen · expiry demonstration',
+        routeSummary='Sentul → Community Kitchen · approved window at risk',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
         incident='The approved window ends in about 5 minutes. If not delivered, the server will move this load to recovery automatically.',
     )
     for at, actor, message, uid in [
-        (now-24*60, 'Community Kitchen', 'Recipient accepted the sandwiches.', 'demo-recipient'),
-        (now-14*60, 'Raju · Hauler 07', 'Driver accepted the collection task.', 'demo-driver'),
-        (now-10*60, 'Raju · Hauler 07', 'Pickup confirmed. Custody transferred to the driver.', 'demo-driver'),
+        (now-24*60, 'Community Kitchen', 'Recipient accepted the sandwiches.', 'role-recipient'),
+        (now-14*60, 'Raju · Hauler 07', 'Driver accepted the collection task.', 'role-driver'),
+        (now-10*60, 'Raju · Hauler 07', 'Pickup confirmed. Custody transferred to the driver.', 'role-driver'),
     ]:
-        e = _demo_event(at, actor, message, expiry['id'], uid); expiry['history'].append(e); expiry_events.append(e)
+        e = _prepared_event(at, actor, message, expiry['id'], uid); expiry['history'].append(e); expiry_events.append(e)
     expiry['version'] = len(expiry['history'])
 
     recovery, recovery_events = batch(
-        'DEMO-RECOVERY', 'Rice trays past the approved food window', 14, 'Rice', -12, 1,
-        stage='waste', ageMinutes=70, recipientId='demo-recipient',
-        driverId='demo-driver', custodianId='demo-driver',
-        participants=['demo-sender', 'demo-recipient', 'demo-driver'],
+        'RH-204', 'Rice trays past the approved food window', 14, 'Rice', -12, 1,
+        stage='waste', ageMinutes=70, recipientId='role-recipient',
+        driverId='role-driver', custodianId='role-driver',
+        participants=['role-sender', 'role-recipient', 'role-driver'],
         expiredAt=now-12*60,
         routeSummary='Food redistribution ended · awaiting facility suitability review',
+        routeOrigin='Driver holding point', routeDestination='Klang Valley BSFL Centre',
     )
-    e = _demo_event(now-12*60, 'Coordination service', 'Approved food window elapsed. Diverted to recovery; driver custody retained.', recovery['id'], 'system')
+    e = _prepared_event(now-12*60, 'Coordination service', 'Approved food window elapsed. Diverted to recovery; driver custody retained.', recovery['id'], 'system')
     recovery['history'].append(e); recovery_events.append(e); recovery['version'] = len(recovery['history'])
 
     complete, complete_events = batch(
-        'DEMO-COMPLETE', 'Separated fruit and vegetable scraps', 24, 'Separated organics', -180, 1,
-        stage='completed', ageMinutes=1440, recipientId='', driverId='demo-driver',
-        facilityId='demo-recovery', custodianId='demo-recovery',
-        participants=['demo-sender', 'demo-driver', 'demo-recovery'],
+        'RH-205', 'Separated fruit and vegetable scraps', 24, 'Separated organics', -180, 1,
+        stage='completed', ageMinutes=1440, recipientId='', driverId='role-driver',
+        facilityId='role-recovery', custodianId='role-recovery',
+        participants=['role-sender', 'role-driver', 'role-recovery'],
         route='BSFL', measuredKg=23.4, output='3.8 kg dried larvae feed',
         residue='19.6 kg residue transferred to controlled composting',
         completedAt=now-30*60,
         routeSummary='Sentul → Klang Valley BSFL Centre',
+        routeOrigin='Sentul Event Hall', routeDestination='Klang Valley BSFL Centre',
     )
     for at, actor, message, uid in [
-        (now-180*60, 'Klang Valley BSFL Centre', 'BSFL suitability and available capacity confirmed.', 'demo-recovery'),
-        (now-150*60, 'Raju · Hauler 07', 'Organic material collected; custody transferred to hauler.', 'demo-driver'),
-        (now-120*60, 'Klang Valley BSFL Centre', 'Load weighed at 23.4 kg, inspected and accepted.', 'demo-recovery'),
-        (now-90*60, 'Klang Valley BSFL Centre', 'Controlled BSFL processing started.', 'demo-recovery'),
-        (now-30*60, 'Klang Valley BSFL Centre', 'Recovery output and residue treatment recorded.', 'demo-recovery'),
+        (now-180*60, 'Klang Valley BSFL Centre', 'BSFL suitability and available capacity confirmed.', 'role-recovery'),
+        (now-150*60, 'Raju · Hauler 07', 'Organic material collected; custody transferred to hauler.', 'role-driver'),
+        (now-120*60, 'Klang Valley BSFL Centre', 'Load weighed at 23.4 kg, inspected and accepted.', 'role-recovery'),
+        (now-90*60, 'Klang Valley BSFL Centre', 'Controlled BSFL processing started.', 'role-recovery'),
+        (now-30*60, 'Klang Valley BSFL Centre', 'Recovery output and residue treatment recorded.', 'role-recovery'),
     ]:
-        e = _demo_event(at, actor, message, complete['id'], uid); complete['history'].append(e); complete_events.append(e)
+        e = _prepared_event(at, actor, message, complete['id'], uid); complete['history'].append(e); complete_events.append(e)
     complete['version'] = len(complete['history'])
 
     s['batches'].extend([listed, route, expiry, recovery, complete])
     all_events = listed_events + route_events + expiry_events + recovery_events + complete_events
     s['events'] = sorted(all_events + s['events'], key=lambda e: e['at'], reverse=True)
-    s['demoSeededAt'] = now
-    s['ai'] = {'status': 'Optional for this demo. Timings and expiry rules run locally.'}
+    s['preparedAt'] = now
+    s['ai'] = {'status': 'Optional. Timings and expiry rules run locally.'}
     save(db, s)
-    (DB.parent / 'demo-access.txt').write_text(
-        'ResQ-Haul demo accounts\nPassword for every demo account: ' + DEMO_PASSWORD + '\n\n' +
-        '\n'.join(f'{role.title()}: {email}' for _, email, _, role, _, _ in DEMO_USERS) + '\n',
+    (DB.parent / 'role-access.txt').write_text(
+        'ResQ-Haul role accounts\nPassword for every role account: ' + PREPARED_PASSWORD + '\n\n' +
+        '\n'.join(f'{role.title()}: {email}' for _, email, _, role, _, _ in PREPARED_USERS) + '\n',
         encoding='utf-8',
     )
 
@@ -317,9 +325,9 @@ def command(db, u, d):
     expire(s)
     a = text(d, 'action')
     admin = u['role'] == 'admin'
-    if a == 'resetDemo':
+    if a == 'resetPrepared':
         require(admin, 'Admin access required.', 403)
-        seed_demo(db, replace=True)
+        seed_prepared(db, replace=True)
         return
     if a in ['approve', 'availability', 'pause']:
         if a == 'availability':

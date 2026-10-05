@@ -12,7 +12,7 @@ class WorkflowTests(unittest.TestCase):
         (app.ROOT / 'data').mkdir(exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=app.ROOT / 'data')
         app.DB = Path(self.temp.name) / 'test.sqlite3'
-        app.initialize(seed_demo_data=False)
+        app.initialize(seed_prepared_data=False)
         self.db = app.connect()
         self.people = {}
         for role in app.ROLES:
@@ -175,27 +175,27 @@ class WorkflowTests(unittest.TestCase):
             server.server_close()
             thread.join(timeout=2)
 
-    def test_demo_seed_has_roles_routes_timings_and_expiry_recovery(self):
-        app.seed_demo(self.db, replace=True)
+    def test_prepared_data_has_roles_routes_timings_and_expiry_recovery(self):
+        app.seed_prepared(self.db, replace=True)
         self.db.commit()
         s = app.state(self.db)
-        demo = {b['id']: b for b in s['batches'] if b['id'].startswith('DEMO-')}
-        self.assertEqual(len(demo), 5)
-        self.assertEqual(demo['DEMO-ROUTE']['stage'], 'transit')
-        self.assertLess(demo['DEMO-ROUTE']['alternativeEta'], demo['DEMO-ROUTE']['eta'])
-        self.assertIn('alternativeRouteSummary', demo['DEMO-ROUTE'])
-        self.assertEqual(demo['DEMO-RECOVERY']['stage'], 'waste')
-        self.assertEqual(demo['DEMO-COMPLETE']['stage'], 'completed')
-        self.assertGreater(demo['DEMO-EXPIRY']['deadline'], time.time())
+        prepared = {b['id']: b for b in s['batches'] if b['id'] in {'RH-201', 'RH-202', 'RH-203', 'RH-204', 'RH-205'}}
+        self.assertEqual(len(prepared), 5)
+        self.assertEqual(prepared['RH-202']['stage'], 'transit')
+        self.assertLess(prepared['RH-202']['alternativeEta'], prepared['RH-202']['eta'])
+        self.assertIn('alternativeRouteSummary', prepared['RH-202'])
+        self.assertEqual(prepared['RH-204']['stage'], 'waste')
+        self.assertEqual(prepared['RH-205']['stage'], 'completed')
+        self.assertGreater(prepared['RH-203']['deadline'], time.time())
 
-        demo['DEMO-EXPIRY']['deadline'] = time.time() - 1
+        prepared['RH-203']['deadline'] = time.time() - 1
         app.save(self.db, s)
-        driver = dict(self.db.execute("SELECT * FROM users WHERE id='demo-driver'").fetchone())
+        driver = dict(self.db.execute("SELECT * FROM users WHERE id='role-driver'").fetchone())
         visible = app.load_for(self.db, driver)
-        expired = next(b for b in visible['batches'] if b['id'] == 'DEMO-EXPIRY')
+        expired = next(b for b in visible['batches'] if b['id'] == 'RH-203')
         self.assertEqual(expired['stage'], 'waste')
         self.assertIn('expiredAt', expired)
-        self.assertEqual(expired['custodianId'], 'demo-driver')
+        self.assertEqual(expired['custodianId'], 'role-driver')
 
 
 if __name__ == '__main__':

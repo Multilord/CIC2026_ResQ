@@ -5,7 +5,7 @@ import 'package:resq_haul_mobile/ui/workspace.dart';
 import 'package:resq_haul_mobile/ui/design.dart';
 
 void main() {
-  testWidgets('Sign-in uses circular branding and no demo controls', (
+  testWidgets('Sign-in uses circular branding and no presentation controls', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -59,8 +59,8 @@ void main() {
       await tester.pumpWidget(PrototypeApp(service: service));
       expect(find.text(roleNames[role]!), findsOneWidget);
       if (role == 'admin') {
-        expect(find.text('Local demo automation active'), findsOneWidget);
-        expect(find.text('Reset demo data and timings'), findsOneWidget);
+        expect(find.text('Automated coordination active'), findsOneWidget);
+        expect(find.text('Restart journey timings'), findsOneWidget);
       }
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Recoveries'));
@@ -75,4 +75,34 @@ void main() {
       service.dispose();
     });
   }
+
+  testWidgets('route map shows current and faster paths on a phone', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: appTheme(),
+        home: const Scaffold(
+          body: Padding(
+            padding: EdgeInsets.all(16),
+            child: RouteMap(
+              origin: 'Sentul Event Hall',
+              destination: 'Community Kitchen',
+              currentEta: 46,
+              alternativeEta: 18,
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Current · 46 min'), findsOneWidget);
+    expect(find.text('Faster route · 18 min'), findsOneWidget);
+    expect(find.text('Sentul Event Hall'), findsOneWidget);
+    expect(find.text('Community Kitchen'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

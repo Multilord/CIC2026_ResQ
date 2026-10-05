@@ -469,3 +469,226 @@ class _NetworkPainter extends CustomPainter {
   bool shouldRepaint(covariant _NetworkPainter old) =>
       old.risk != risk || old.radius != radius;
 }
+
+class RouteMap extends StatelessWidget {
+  const RouteMap({
+    super.key,
+    required this.origin,
+    required this.destination,
+    required this.currentEta,
+    this.alternativeEta,
+    this.expired = false,
+  });
+
+  final String origin;
+  final String destination;
+  final int currentEta;
+  final int? alternativeEta;
+  final bool expired;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label:
+        'Route from $origin to $destination. Current estimate $currentEta minutes${alternativeEta == null ? '' : ', alternative $alternativeEta minutes'}.',
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(22),
+      child: SizedBox(
+        height: 236,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: CustomPaint(
+                painter: _RoutePainter(
+                  showAlternative:
+                      alternativeEta != null && alternativeEta! < currentEta,
+                  expired: expired,
+                ),
+              ),
+            ),
+            Positioned(
+              top: 14,
+              left: 14,
+              right: 14,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Pill(
+                    expired
+                        ? 'Food window elapsed'
+                        : 'Current · $currentEta min',
+                    color: expired ? Palette.warning : Palette.text,
+                    icon: expired ? Icons.timer_off_outlined : Icons.traffic,
+                  ),
+                  if (alternativeEta != null && alternativeEta! < currentEta)
+                    Pill(
+                      'Faster route · $alternativeEta min',
+                      icon: Icons.alt_route,
+                    ),
+                ],
+              ),
+            ),
+            Positioned(
+              left: 14,
+              right: 14,
+              bottom: 13,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  color: Palette.bg.withValues(alpha: .9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: Palette.line),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.trip_origin,
+                      size: 15,
+                      color: Palette.text,
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        origin,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Icon(
+                        Icons.arrow_forward,
+                        size: 14,
+                        color: Palette.muted,
+                      ),
+                    ),
+                    const Icon(
+                      Icons.location_on,
+                      size: 15,
+                      color: Palette.accent,
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        destination,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.end,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _RoutePainter extends CustomPainter {
+  const _RoutePainter({required this.showAlternative, required this.expired});
+  final bool showAlternative;
+  final bool expired;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = Palette.panel);
+    final minorRoad = Paint()
+      ..color = Palette.line.withValues(alpha: .65)
+      ..strokeWidth = 5
+      ..style = PaintingStyle.stroke;
+    final majorRoad = Paint()
+      ..color = Palette.brandSurface
+      ..strokeWidth = 11
+      ..style = PaintingStyle.stroke;
+    for (double x = -80; x < size.width + 80; x += 72) {
+      canvas.drawLine(Offset(x, 0), Offset(x + 105, size.height), minorRoad);
+    }
+    for (double y = 70; y < size.height + 70; y += 58) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y - 48), minorRoad);
+    }
+    canvas.drawPath(
+      Path()
+        ..moveTo(-10, size.height * .72)
+        ..cubicTo(
+          size.width * .26,
+          size.height * .36,
+          size.width * .62,
+          size.height * .84,
+          size.width + 10,
+          size.height * .24,
+        ),
+      majorRoad,
+    );
+
+    final start = Offset(size.width * .16, size.height * .65);
+    final end = Offset(size.width * .84, size.height * .43);
+    final current = Path()
+      ..moveTo(start.dx, start.dy)
+      ..cubicTo(
+        size.width * .34,
+        size.height * .30,
+        size.width * .58,
+        size.height * .82,
+        end.dx,
+        end.dy,
+      );
+    canvas.drawPath(
+      current,
+      Paint()
+        ..color = expired ? Palette.muted : Palette.warning
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke,
+    );
+
+    if (showAlternative) {
+      final alternative = Path()
+        ..moveTo(start.dx, start.dy)
+        ..cubicTo(
+          size.width * .35,
+          size.height * .70,
+          size.width * .58,
+          size.height * .36,
+          end.dx,
+          end.dy,
+        );
+      canvas.drawPath(
+        alternative,
+        Paint()
+          ..color = Palette.accent
+          ..strokeWidth = 5
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke,
+      );
+    }
+
+    for (final point in [start, end]) {
+      canvas.drawCircle(point, 12, Paint()..color = Palette.bg);
+      canvas.drawCircle(
+        point,
+        7,
+        Paint()..color = point == end ? Palette.accent : Palette.text,
+      );
+    }
+    final vehicle = Offset(size.width * .53, size.height * .54);
+    canvas.drawCircle(vehicle, 13, Paint()..color = Palette.bg);
+    canvas.drawCircle(
+      vehicle,
+      8,
+      Paint()..color = expired ? Palette.muted : Palette.warning,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoutePainter oldDelegate) =>
+      oldDelegate.showAlternative != showAlternative ||
+      oldDelegate.expired != expired;
+}
