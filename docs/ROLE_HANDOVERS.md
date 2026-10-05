@@ -1,5 +1,11 @@
 # Role journeys and handovers
 
+## Sending and receiving with one account
+
+Sending and receiving use one account type. After every login, choose **Send food** or **Receive food**. The selected mode determines the dashboard, visible recoveries and permitted actions for that session. Sign out and sign in again to choose a different mode. Separate sessions can choose different modes independently.
+
+Existing sender and recipient accounts retain their identities, passwords and history; each now supports both modes. Sending displays that account's listings. Receiving displays other senders' available food and that account's accepted deliveries or offers. An account cannot receive its own listing. New combined accounts require administrator verification.
+
 ## Food redistribution
 
 1. Sender publishes food; recipient accepts within capacity and the approved window.

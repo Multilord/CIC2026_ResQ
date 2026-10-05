@@ -5,6 +5,7 @@ import 'design.dart';
 const roleNames = {
   'sender': 'Sender',
   'recipient': 'Recipient',
+  'member': 'Send & receive',
   'driver': 'Driver / Hauler',
   'recovery': 'Recovery Facility',
   'admin': 'Admin',
@@ -75,6 +76,96 @@ class _WorkspaceState extends State<Workspace> {
     listenable: api,
     builder: (context, _) {
       if (api.state == null) return SignIn(service: api);
+      if (api.role == 'member') {
+        return Scaffold(
+          body: SafeArea(
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const DashboardLogo(width: 72),
+                      gap(20),
+                      const BrandWordmark(size: 30),
+                      gap(28),
+                      const Editorial('What brings you here?', size: 34),
+                      gap(12),
+                      Text(
+                        'Welcome, ${api.user['name']}. Choose how you want to use your account for this login.',
+                        style: const TextStyle(
+                          color: Palette.muted,
+                          height: 1.5,
+                        ),
+                      ),
+                      gap(24),
+                      if (busy) const LinearProgressIndicator(),
+                      Surface(
+                        onTap: busy
+                            ? null
+                            : () => run(() async {
+                                await api.selectMode('sender');
+                                if (mounted) setState(() => tab = 0);
+                              }),
+                        child: const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.outbox_outlined,
+                            color: Palette.accent,
+                          ),
+                          title: Text(
+                            'Send food',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            'List surplus and manage your collections.',
+                          ),
+                          trailing: Icon(Icons.arrow_forward),
+                        ),
+                      ),
+                      gap(14),
+                      Surface(
+                        onTap: busy
+                            ? null
+                            : () => run(() async {
+                                await api.selectMode('recipient');
+                                if (mounted) setState(() => tab = 0);
+                              }),
+                        child: const ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.move_to_inbox_outlined,
+                            color: Palette.accent,
+                          ),
+                          title: Text(
+                            'Receive food',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            'Find food, accept deliveries and inspect arrivals.',
+                          ),
+                          trailing: Icon(Icons.arrow_forward),
+                        ),
+                      ),
+                      gap(20),
+                      const Text(
+                        'You can choose a different mode the next time you sign in.',
+                        style: TextStyle(color: Palette.muted, height: 1.5),
+                      ),
+                      TextButton(
+                        onPressed: busy ? null : () => run(api.logout),
+                        child: const Text('Sign out'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      }
       final wide = MediaQuery.sizeOf(context).width >= 900;
       final destinations = [
         admin ? 'Network' : 'Workspace',
@@ -862,7 +953,10 @@ class _WorkspaceState extends State<Workspace> {
                                   : (api.state!['users'] as List)
                                         .where(
                                           (u) =>
-                                              u['role'] == 'recipient' &&
+                                              [
+                                                'recipient',
+                                                'member',
+                                              ].contains(u['role']) &&
                                               u['approved'] == 1,
                                         )
                                         .map(
@@ -1373,7 +1467,7 @@ class _SignInState extends State<SignIn> {
   final form = GlobalKey<FormState>();
   final values = <String, String>{};
   bool registering = false, busy = false, revealPassword = false;
-  String role = 'sender';
+  String role = 'member';
   String? message;
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1413,7 +1507,13 @@ class _SignInState extends State<SignIn> {
                       isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Your role'),
                       items: roleNames.entries
-                          .where((e) => e.key != 'admin')
+                          .where(
+                            (e) => ![
+                              'admin',
+                              'sender',
+                              'recipient',
+                            ].contains(e.key),
+                          )
                           .map(
                             (e) => DropdownMenuItem(
                               value: e.key,
@@ -1464,7 +1564,7 @@ class _SignInState extends State<SignIn> {
                   ),
                   if (registering)
                     const Text(
-                      'Recipient, driver and facility accounts require admin verification.',
+                      'Accounts require admin verification. Send & receive accounts choose a mode after each login.',
                       style: TextStyle(color: Palette.muted, fontSize: 12),
                     ),
                 ],

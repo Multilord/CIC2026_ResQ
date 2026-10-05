@@ -82,6 +82,13 @@ class NetworkService extends ChangeNotifier {
     }
   }
 
+  Future<void> selectMode(String mode) async {
+    _revision++;
+    state = await request('/mode', {'mode': mode});
+    error = null;
+    notifyListeners();
+  }
+
   Future<void> command(
     String action, {
     Map<String, dynamic>? batch,

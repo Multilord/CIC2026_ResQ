@@ -127,6 +127,16 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(b['custodianId'], 'driver')
         self.assertNotIn('pickupRequest', b)
 
+    def test_member_modes_filter_records_and_prevent_self_acceptance(self):
+        self.create()
+        sender = {**self.people['sender'], 'accountRole': 'member'}
+        receiving = {**sender, 'role': 'recipient'}
+        self.assertEqual(len(app.load_for(self.db, sender)['batches']), 1)
+        self.assertEqual(app.load_for(self.db, receiving)['batches'], [])
+        self.people['self-receiver'] = receiving
+        with self.assertRaises(app.Problem):
+            self.cmd('self-receiver', 'accept')
+
     def test_expiry_preserves_custody(self):
         self.transit()
         s = app.state(self.db)
@@ -230,11 +240,30 @@ class WorkflowTests(unittest.TestCase):
             token = request('/login', {'email': 'new@test.local', 'password': 'test-password-123'})['token']
             data = request('/state', token=token)
             self.assertEqual(data['user']['approved'], 0)
+            self.assertEqual(data['user']['role'], 'member')
             self.assertNotIn('password', data['user'])
             with self.assertRaises(HTTPError) as denied:
                 request('/command', {'action': 'availability', 'available': True}, token)
             self.assertEqual(denied.exception.code, 403)
             denied.exception.close()
+            with self.assertRaises(HTTPError) as invalid:
+                request('/mode', {'mode': 'admin'}, token)
+            invalid.exception.close()
+            self.db.execute("UPDATE users SET approved=1 WHERE email='new@test.local'")
+            self.db.commit()
+            chosen = request('/mode', {'mode': 'sender'}, token)
+            self.assertEqual(chosen['user']['role'], 'sender')
+            with self.assertRaises(HTTPError) as changed:
+                request('/mode', {'mode': 'recipient'}, token)
+            changed.exception.close()
+            second_token = request('/login', {'email': 'new@test.local', 'password': 'test-password-123'})['token']
+            self.assertEqual(request('/state', token=second_token)['user']['role'], 'member')
+            self.assertEqual(request('/mode', {'mode': 'recipient'}, second_token)['user']['role'], 'recipient')
+            self.assertEqual(request('/state', token=token)['user']['role'], 'sender')
+            with self.assertRaises(HTTPError) as wrong_mode:
+                request('/command', {'action': 'create'}, second_token)
+            wrong_mode.exception.close()
+            request('/logout', {}, second_token)
             request('/logout', {}, token)
             with self.assertRaises(HTTPError) as expired:
                 request('/state', token=token)

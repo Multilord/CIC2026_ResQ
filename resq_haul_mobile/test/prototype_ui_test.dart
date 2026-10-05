@@ -5,6 +5,32 @@ import 'package:resq_haul_mobile/ui/workspace.dart';
 import 'package:resq_haul_mobile/ui/design.dart';
 
 void main() {
+  testWidgets(
+    'combined account chooses a mode before seeing workspace actions',
+    (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final service = NetworkService();
+      service.state = {
+        'user': {
+          'id': 'member',
+          'name': 'Community partner',
+          'role': 'member',
+          'accountRole': 'member',
+          'approved': 1,
+        },
+        'batches': [],
+      };
+      await tester.pumpWidget(PrototypeApp(service: service));
+      expect(find.text('Send food'), findsOneWidget);
+      expect(find.text('Receive food'), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+      expect(tester.takeException(), isNull);
+      service.dispose();
+    },
+  );
   testWidgets('Sign-in uses circular branding and no presentation controls', (
     tester,
   ) async {
@@ -28,11 +54,11 @@ void main() {
     await tester.tap(find.text('New here? Create an account'));
     await tester.pumpAndSettle();
     expect(find.text('Join the recovery.'), findsOneWidget);
-    expect(find.text('Sender'), findsOneWidget);
+    expect(find.text('Send & receive'), findsOneWidget);
     expect(tester.takeException(), isNull);
     service.dispose();
   });
-  for (final role in roleNames.keys) {
+  for (final role in roleNames.keys.where((role) => role != 'member')) {
     testWidgets('$role workspace renders on a narrow phone', (tester) async {
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1;
