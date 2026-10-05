@@ -124,6 +124,27 @@ class WorkflowTests(unittest.TestCase):
             self.cmd('driver', 'claim', version=b['version'])
         self.assertEqual(error.exception.status, 409)
 
+    def test_recovery_examples_support_assessment_inspection_and_processing(self):
+        app.seed_prepared(self.db)
+        app.seed_recovery(self.db)
+        app.seed_recovery(self.db)
+        facility = dict(self.db.execute("SELECT * FROM users WHERE id='role-recovery'").fetchone())
+        view = app.load_for(self.db, facility)
+        examples = {b['id']: b for b in view['batches'] if b['id'].startswith('RH-40')}
+        self.assertEqual(len(examples), 7)
+        self.assertEqual({b['stage'] for b in examples.values()}, {'waste', 'assessed', 'collected', 'facilityArrival', 'facilityAccepted', 'processing', 'completed'})
+        def act(bid, action, **fields):
+            b = next(b for b in app.state(self.db)['batches'] if b['id'] == bid)
+            app.command(self.db, facility, {'id': bid, 'version': b['version'], 'action': action, **fields})
+        act('RH-401', 'assess', route='Compost', confirmed=True)
+        act('RH-404', 'receive', measuredKg=5.8, suitable=True, confirmed=True)
+        act('RH-405', 'process')
+        act('RH-406', 'complete', output='Biogas output recorded', residue='Digestate sent for controlled treatment', confirmed=True)
+        s = app.state(self.db)
+        self.assertEqual(next(b for b in s['batches'] if b['id'] == 'RH-404')['custodianId'], facility['id'])
+        self.assertEqual(next(b for b in s['batches'] if b['id'] == 'RH-406')['stage'], 'completed')
+        self.assertEqual(len([e for e in s['earnings'] if e['batchId'] == 'RH-404']), 1)
+
     def test_listing_uses_registered_type_despite_client_override(self):
         self.db.execute("UPDATE account_profiles SET sender_type='Retailer' WHERE user_id='sender'")
         b = self.create()

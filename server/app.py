@@ -98,6 +98,7 @@ def initialize(seed_prepared_data=None):
             refresh_examples = state(db).get('recipientExamplesVersion') != 2
             seed_prepared(db, replace=refresh_examples)
             seed_marketplace(db, replace=refresh_examples)
+            seed_recovery(db)
         db.execute("UPDATE users SET role='member' WHERE role IN ('sender','recipient')")
         s = state(db)
         for user in db.execute("SELECT id FROM users WHERE role='member'").fetchall():
@@ -422,6 +423,79 @@ def seed_marketplace(db, replace=False):
     save(db, s)
 
 
+def seed_recovery(db, replace=False):
+    """Independent recovery examples; never reset live or food journeys."""
+    s = state(db)
+    if s.get('recoveryExamplesVersion') == 1 and not replace:
+        return
+    ids = {f'RH-{i}' for i in range(401, 408)}
+    s['batches'] = [b for b in s['batches'] if b['id'] not in ids]
+    s['events'] = [e for e in s['events'] if e.get('batchId') not in ids]
+    s['earnings'] = [e for e in s.get('earnings', []) if e['batchId'] not in ids]
+    now = time.time()
+    examples = [
+        ('Separated vegetable trimmings', 'waste', 'Compost', 8),
+        ('Fruit preparation scraps', 'assessed', 'BSFL', 6),
+        ('Expired rice for organic recovery', 'collected', 'Biogas', 6),
+        ('Separated buffet leftovers', 'facilityArrival', 'BSFL', 6),
+        ('Market vegetable offcuts', 'facilityAccepted', 'Compost', 10),
+        ('Fruit pulp for biogas', 'processing', 'Biogas', 9),
+        ('Completed vegetable compost batch', 'completed', 'Compost', 12),
+    ]
+    for i, (name, stage, route, kg) in enumerate(examples):
+        bid = f'RH-{401+i}'
+        # Compost example reflects a completed multi-week process.
+        start = now - (45*86400 if stage == 'completed' else 3*86400 if stage == 'processing' else 7200)
+        assigned = i >= 2
+        received = i >= 4
+        b = {'id': bid, 'version': 0, 'name': name, 'source': 'KL Event Collective',
+             'senderId': 'role-sender', 'senderType': 'Event host',
+             'location': 'Sentul Event Hall · separated organics bay',
+             'category': 'Separated organics', 'kg': kg, 'storage': 'Covered recovery container',
+             'allergens': 'Mixed ingredients; not for human consumption',
+             'packaging': 'Reusable sealed bins; packaging separated from organics',
+             'pickupNotes': 'Use the service entrance and weigh the sealed container.',
+             'deadline': start, 'expiredAt': start, 'createdAt': start,
+             'eta': 18 if i == 2 else 20 if i < 2 else 0,
+             'stage': stage, 'donate': True, 'price': 0, 'recipientId': '',
+             'driverId': 'role-driver' if assigned else '',
+             'facilityId': 'role-recovery' if i >= 1 else '',
+             'custodianId': 'role-recovery' if received else 'role-driver' if assigned else 'role-sender',
+             'participants': ['role-sender'] + (['role-recovery'] if i >= 1 else []) + (['role-driver'] if assigned else []),
+             'offer': None, 'rerouted': False, 'history': [],
+             'routeOrigin': 'Sentul Event Hall', 'routeDestination': 'Klang Valley BSFL Centre' if i >= 1 else 'Awaiting facility assessment',
+             'routeSummary': 'Sentul collection bay → Selayang recovery facility' if i >= 1 else 'Awaiting recovery suitability assessment'}
+        def record(at, actor, actor_id, message):
+            e = _prepared_event(at, actor, message, bid, actor_id)
+            b['history'].append(e); s['events'].append(e)
+        record(start, 'KL Event Collective', 'role-sender', 'Separated organic material listed for recovery only.')
+        if i >= 1:
+            b['route'] = route
+            record(start+300, 'Klang Valley BSFL Centre', 'role-recovery', f'Suitability reviewed; {route} selected. Awaiting collection.')
+        if assigned:
+            b.update(pickedUpAt=start+1200, transportJob={'id': f'recovery-trip-{bid}', 'driverId': 'role-driver', 'fare': 18.0})
+            record(start+1200, 'Raju · Hauler 07', 'role-driver', 'Pickup handover verified; hauler holds the material.')
+        if i >= 3:
+            b['facilityArrivalAt'] = start+2400
+            record(start+2400, 'Raju · Hauler 07', 'role-driver', 'Arrived at facility. Awaiting weighing and inspection.')
+        if received:
+            b['measuredKg'] = kg - .2
+            record(start+2700, 'Klang Valley BSFL Centre', 'role-recovery', f'Weighed at {kg-.2:.1f} kg; inspected and accepted.')
+            credit_driver(s, b)
+            s['earnings'][-1]['at'] = start+2700
+        if i >= 5:
+            b['processingAt'] = start+3600
+            record(start+3600, 'Klang Valley BSFL Centre', 'role-recovery', f'{route} processing started.')
+        if stage == 'completed':
+            b.update(completedAt=now-3600, output='4.6 kg mature compost recorded after curing and quality review', residue='0.4 kg screened oversize returned for further composting; moisture and process losses logged')
+            record(now-3600, 'Klang Valley BSFL Centre', 'role-recovery', 'Processing and curing completed. Compost output and residue handling recorded.')
+        b['version'] = len(b['history'])
+        s['batches'].append(b)
+    s['events'].sort(key=lambda e: e['at'], reverse=True)
+    s['recoveryExamplesVersion'] = 1
+    save(db, s)
+
+
 def session(db, token):
     u = db.execute('SELECT u.*, s.active_mode, p.sender_type FROM users u JOIN sessions s ON u.id=s.user_id LEFT JOIN account_profiles p ON p.user_id=u.id WHERE s.token=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
     require(u is not None, 'Please sign in again.', 401)
@@ -497,6 +571,7 @@ def command(db, u, d):
         require(admin, 'Admin access required.', 403)
         seed_prepared(db, replace=True)
         seed_marketplace(db, replace=True)
+        seed_recovery(db, replace=True)
         return
     if a in ['approve', 'availability', 'pause']:
         if a == 'availability':
