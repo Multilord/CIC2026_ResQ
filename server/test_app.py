@@ -12,7 +12,7 @@ class WorkflowTests(unittest.TestCase):
         (app.ROOT / 'data').mkdir(exist_ok=True)
         self.temp = tempfile.TemporaryDirectory(dir=app.ROOT / 'data')
         app.DB = Path(self.temp.name) / 'test.sqlite3'
-        app.initialize()
+        app.initialize(seed_demo_data=False)
         self.db = app.connect()
         self.people = {}
         for role in app.ROLES:
@@ -174,6 +174,28 @@ class WorkflowTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join(timeout=2)
+
+    def test_demo_seed_has_roles_routes_timings_and_expiry_recovery(self):
+        app.seed_demo(self.db, replace=True)
+        self.db.commit()
+        s = app.state(self.db)
+        demo = {b['id']: b for b in s['batches'] if b['id'].startswith('DEMO-')}
+        self.assertEqual(len(demo), 5)
+        self.assertEqual(demo['DEMO-ROUTE']['stage'], 'transit')
+        self.assertLess(demo['DEMO-ROUTE']['alternativeEta'], demo['DEMO-ROUTE']['eta'])
+        self.assertIn('alternativeRouteSummary', demo['DEMO-ROUTE'])
+        self.assertEqual(demo['DEMO-RECOVERY']['stage'], 'waste')
+        self.assertEqual(demo['DEMO-COMPLETE']['stage'], 'completed')
+        self.assertGreater(demo['DEMO-EXPIRY']['deadline'], time.time())
+
+        demo['DEMO-EXPIRY']['deadline'] = time.time() - 1
+        app.save(self.db, s)
+        driver = dict(self.db.execute("SELECT * FROM users WHERE id='demo-driver'").fetchone())
+        visible = app.load_for(self.db, driver)
+        expired = next(b for b in visible['batches'] if b['id'] == 'DEMO-EXPIRY')
+        self.assertEqual(expired['stage'], 'waste')
+        self.assertIn('expiredAt', expired)
+        self.assertEqual(expired['custodianId'], 'demo-driver')
 
 
 if __name__ == '__main__':

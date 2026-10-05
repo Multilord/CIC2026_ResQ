@@ -12,6 +12,20 @@ python server/app.py
 
 The API runs at http://127.0.0.1:4175. First-start admin credentials are written to `server/data/admin-access.txt`, excluded from Git. Register Sender accounts in the app. Recipient, Driver and Facility accounts need verification in Admin → Manage.
 
+## Prepared demo accounts
+
+The local API creates these verified presentation accounts. They all use password `ResQDemo2026!`:
+
+| Role | Email |
+|---|---|
+| Sender | `sender@resq.demo` |
+| Recipient | `recipient@resq.demo` |
+| Alternate recipient | `pantry@resq.demo` |
+| Driver / Hauler | `driver@resq.demo` |
+| Recovery Facility | `recovery@resq.demo` |
+
+Five prepared journeys cover a new listing, an accepted delayed delivery with a faster route, a five-minute expiry demonstration, a batch already diverted to recovery and a completed BSFL recovery. Admin can select **Reset demo data and timings** to restore them without deleting non-demo accounts or listings. Credentials are also written locally to `server/data/demo-access.txt`.
+
 In another terminal:
 
 ```sh
@@ -42,7 +56,7 @@ For a USB phone, use `adb reverse tcp:4175 tcp:4175` and `API_BASE_URL=http://12
 
 Copy `server/config.example` to `server/local.env`. Set `GEMINI_API_KEY` and `GEMINI_MODEL` locally and restart the API. Select a model available to your Google project supporting generateContent structured JSON. Do not put credentials into Flutter or Git.
 
-The worker reviews changed recoveries every 30 seconds. It recommends capacity-eligible participants, evaluates driver-supplied alternative arrival estimates, applies validated same-recipient route changes and escalates unresolved risk. People still accept tasks and confirm physical handovers. Admin can pause coordination. No custom model training has been performed.
+The local timing and expiry rules work without Gemini. If configured, the worker reviews changed recoveries every 30 seconds, recommends capacity-eligible participants, evaluates driver-supplied alternative arrival estimates, applies validated same-recipient route changes and escalates unresolved risk. People still accept tasks and confirm physical handovers. Admin can pause coordination. No custom model training has been performed.
 
 ## Checks
 
@@ -56,6 +70,6 @@ See [Flow and stack](docs/PROJECT_FLOW_AND_STACK.md) and [Verification](docs/VER
 
 ## Limits
 
-Accounts, data, permissions, transitions and audit history are real and shared through the local API. The network starts empty. Sessions last 12 hours and stay in memory; reopening the app requires sign-in. The original offline walkthrough and tests remain for reference, but main.dart launches the new app. Old demo data is not imported into the shared database.
+Accounts, data, permissions, transitions and audit history are real and shared through the local API. The network starts with five resettable demo journeys. Sessions last 12 hours and stay in memory; reopening the app requires sign-in. The original offline walkthrough and tests remain for reference, but main.dart launches the new app.
 
 Maps/GPS, route-provider ETAs, push notifications, IoT sensors, payments, email verification, password recovery and managed deployment are not connected. Participant-entered ETAs are estimates; recorded sale prices are not payments. Activity refreshes every 10 seconds. Gemini has not been live-tested without credentials. This local HTTP service is for a controlled pilot, not a public production deployment.

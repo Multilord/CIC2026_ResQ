@@ -293,13 +293,15 @@ class _WorkspaceState extends State<Workspace> {
               ? 'Paused by admin'
               : api.state!['geminiConfigured']
               ? api.state!['ai']['status']
-              : 'Gemini setup required',
+              : 'Local demo automation active',
           style: const TextStyle(fontSize: 20),
         ),
         gap(8),
-        const Text(
-          'Checks journey risk and validates supplied alternative routes. Unresolved cases appear in your attention queue.',
-          style: TextStyle(color: Palette.muted, height: 1.5),
+        Text(
+          api.state!['geminiConfigured']
+              ? 'Gemini reviews journey risk. Every route and handover is still validated by the server.'
+              : 'Approved time windows, automatic expiry and role transitions work locally. Gemini is optional.',
+          style: const TextStyle(color: Palette.muted, height: 1.5),
         ),
         gap(14),
         OutlinedButton(
@@ -322,9 +324,41 @@ class _WorkspaceState extends State<Workspace> {
             api.state!['paused'] ? 'Resume coordination' : 'Pause coordination',
           ),
         ),
+        gap(8),
+        TextButton.icon(
+          onPressed: busy ? null : resetDemo,
+          icon: const Icon(Icons.restart_alt),
+          label: const Text('Reset demo data and timings'),
+        ),
       ],
     ),
   );
+
+  Future<void> resetDemo() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reset demo data?'),
+        content: const Text(
+          'This refreshes the five prepared demo journeys and restarts their time windows. Other accounts and non-demo listings remain available.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Reset demo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await run(() => api.command('resetDemo'));
+    }
+  }
+
   List<Widget> listings() {
     final list = api.batches
         .where(
@@ -755,6 +789,26 @@ class _WorkspaceState extends State<Workspace> {
                   'Recipient: ${nameFor(b['recipientId'])}\nDriver: ${nameFor(b['driverId'])}\nFacility: ${nameFor(b['facilityId'])}\nCurrent custody: ${nameFor(b['custodianId'] ?? b['senderId'])}',
                   style: const TextStyle(height: 1.8, color: Palette.muted),
                 ),
+                if (b['routeSummary'] != null) ...[
+                  gap(14),
+                  const Eyebrow('ROUTING'),
+                  gap(7),
+                  Text(b['routeSummary']),
+                  if (b['alternativeRouteSummary'] != null) ...[
+                    gap(6),
+                    Text(
+                      b['alternativeRouteSummary'],
+                      style: const TextStyle(color: Palette.accent),
+                    ),
+                  ],
+                ],
+                if (stage == 'waste' && b['expiredAt'] != null) ...[
+                  gap(12),
+                  const SmallNote(
+                    'The approved food window has elapsed. This batch is now available to verified recovery facilities.',
+                    warning: true,
+                  ),
+                ],
                 if (b['recommendation'] != null) ...[
                   gap(14),
                   SmallNote(
@@ -1013,8 +1067,8 @@ class _SignInState extends State<SignIn> {
                   if (registering) ...[
                     input('name', 'Your name or organisation'),
                     DropdownButtonFormField<String>(
-                        initialValue: role,
-                        isExpanded: true,
+                      initialValue: role,
+                      isExpanded: true,
                       decoration: const InputDecoration(labelText: 'Your role'),
                       items: roleNames.entries
                           .where((e) => e.key != 'admin')

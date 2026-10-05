@@ -58,6 +58,10 @@ void main() {
       };
       await tester.pumpWidget(PrototypeApp(service: service));
       expect(find.text(roleNames[role]!), findsOneWidget);
+      if (role == 'admin') {
+        expect(find.text('Local demo automation active'), findsOneWidget);
+        expect(find.text('Reset demo data and timings'), findsOneWidget);
+      }
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Recoveries'));
       await tester.pumpAndSettle();
