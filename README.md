@@ -4,6 +4,14 @@ Flutter prototype for surplus-food redistribution and organic resource recovery.
 
 The active app has Sender, Recipient, Driver / Hauler, Recovery Facility and Admin accounts; a shared SQLite backend; recorded handovers; and a server-side Gemini integration. Navy/yellow branding uses the supplied logo with circular clipping.
 
+## API Keys & Configuration
+
+Before starting the server, you must provide a Gemini API key so the AI Coordinator can function:
+1. Copy `server/config.example` to `server/local.env`
+2. Open `server/local.env` and paste your Gemini API key:
+   `GEMINI_API_KEY=AIzaSy...`
+3. You can also change the default Gemini model using `GEMINI_MODEL`.
+
 ## Start
 
 ```sh
@@ -11,6 +19,7 @@ python server/app.py
 ```
 
 In a second terminal:
+
 
 ```sh
 cd resq_haul_mobile
