@@ -4,7 +4,24 @@ ResQ-Haul is a Flutter workspace for senders, recipients, haulers, recovery faci
 
 ## Visual direction
 
-Keep the supplied circular logo, deep navy canvas and yellow action accent. Use the bundled editorial typeface for page titles and ordinary sans serif text for operational details. Use restrained corner radii, consistent spacing and clear separators. Reserve yellow for actions and journey status; use muted text for supporting context.
+Use the supplied food-cycle symbol: a green bowl, produce and circular recovery arrows. Keep its transparent circular silhouette in the app and place it on cream for platform launcher icons. Pair a warm cream canvas with white surfaces, forest-green text and primary controls, pale leaf-green navigation, and citrus-orange and golden-yellow accents. Use darker green and orange shades for readable text. The wordmark combines green “ResQ” with orange “-Haul”. Use the bundled editorial typeface for page titles and ordinary sans serif text for operational details. Keep restrained corner radii, consistent spacing and clear separators.
+
+## Brand palette
+
+| Use | Colour |
+| --- | --- |
+| Cream canvas | `#FCFAEE` |
+| Forest text | `#073D2A` |
+| Green controls | `#007A3D` |
+| Pale leaf surfaces | `#E7F0D9` |
+| Lime accent | `#77BD24` |
+| Citrus orange | `#FF9500` |
+| Golden yellow | `#FFBE00` |
+| Readable orange text | `#B85B00` |
+
+The supplied brand sheet is the reference. The transparent symbol lives at `resq_haul_mobile/assets/images/resq-haul-logo.png`; platform icons use the same symbol on cream. Created with the built-in image tool using this extraction prompt:
+
+> Extract only the supplied food-cycle symbol: green bowl with white leaf, orange bread, red-orange apple, green leaves, two circular green recycling arrows and golden emphasis marks. Preserve its identity, colours, gradients and arrangement. Centre the symbol on transparent alpha with safe padding. Remove wordmarks, square containers, other variants, palette and background. No new logo design or text.
 
 ## Interaction priorities
 

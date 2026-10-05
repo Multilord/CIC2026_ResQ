@@ -107,7 +107,7 @@ class _WorkspaceState extends State<Workspace> {
                       ),
                       const Padding(
                         padding: EdgeInsets.symmetric(horizontal: 24),
-                        child: Editorial('ResQ-Haul', size: 27),
+                        child: BrandWordmark(size: 26),
                       ),
                       gap(32),
                       for (var i = 0; i < destinations.length; i++)
@@ -156,7 +156,7 @@ class _WorkspaceState extends State<Workspace> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Eyebrow('RESQ-HAUL'),
+                                    const BrandWordmark(size: 17),
                                     Text(
                                       roleNames[api.role] ?? '',
                                       style: const TextStyle(
@@ -282,7 +282,9 @@ class _WorkspaceState extends State<Workspace> {
       gap(24),
       Row(
         children: [
-          Expanded(child: metric('${active.length}', 'In progress')),
+          Expanded(
+            child: metric('${active.length}', 'In progress', highlight: true),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: metric(
@@ -363,23 +365,31 @@ class _WorkspaceState extends State<Workspace> {
     ];
   }
 
-  Widget metric(String value, String label) => Surface(
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 26,
-            color: Palette.accent,
-            fontWeight: FontWeight.w600,
-          ),
+  Widget metric(String value, String label, {bool highlight = false}) =>
+      Surface(
+        color: highlight ? Palette.accent : Palette.attentionSurface,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 26,
+                color: highlight ? Palette.bg : Palette.orangeInk,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            gap(8),
+            Text(
+              label,
+              style: TextStyle(
+                color: highlight ? Palette.bg : Palette.warning,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
-        gap(8),
-        Text(label, style: const TextStyle(color: Palette.muted, fontSize: 12)),
-      ],
-    ),
-  );
+      );
   Widget empty(String title, String body) => Surface(
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1297,6 +1307,8 @@ class _SignInState extends State<SignIn> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Center(child: BrandLogo(width: 112)),
+                  gap(10),
+                  const Center(child: BrandWordmark(size: 30)),
                   gap(28),
                   const Eyebrow('GOOD FOOD. BETTER FUTURES.'),
                   gap(12),

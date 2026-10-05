@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 
 class Palette {
-  static const bg = Color(0xFF061D40),
-      panel = Color(0xFF102C52),
-      brandSurface = Color(0xFF153C69),
-      text = Color(0xFFF7F8F4),
-      muted = Color(0xFFAFC2DB),
-      warning = Color(0xFFFFE58A),
-      accent = Color(0xFFFEDC25),
-      line = Color(0xFF2C4970),
-      navy = Color(0xFF032759),
-      attentionSurface = Color(0xFF273C50);
+  static const bg = Color(0xFFFCFAEE),
+      panel = Color(0xFFFFFFFF),
+      brandSurface = Color(0xFFE7F0D9),
+      text = Color(0xFF073D2A),
+      muted = Color(0xFF5C7063),
+      warning = Color(0xFF914900),
+      accent = Color(0xFF007A3D),
+      line = Color(0xFFD7E1D2),
+      navy = Color(0xFF064C32),
+      attentionSurface = Color(0xFFFFF0CF),
+      orange = Color(0xFFFF9500),
+      orangeInk = Color(0xFFB85B00),
+      lime = Color(0xFF77BD24),
+      yellow = Color(0xFFFFBE00);
 }
 
 class BrandLogo extends StatelessWidget {
@@ -28,23 +32,49 @@ class BrandLogo extends StatelessWidget {
   );
 }
 
+class BrandWordmark extends StatelessWidget {
+  const BrandWordmark({super.key, this.size = 26});
+  final double size;
+  @override
+  Widget build(BuildContext context) => Text.rich(
+    TextSpan(
+      children: [
+        const TextSpan(
+          text: 'ResQ',
+          style: TextStyle(color: Palette.accent),
+        ),
+        const TextSpan(
+          text: '-Haul',
+          style: TextStyle(color: Palette.orangeInk),
+        ),
+      ],
+    ),
+    semanticsLabel: 'ResQ-Haul',
+    style: TextStyle(
+      fontSize: size,
+      fontWeight: FontWeight.w900,
+      letterSpacing: -.8,
+    ),
+  );
+}
+
 ThemeData appTheme() => ThemeData(
   useMaterial3: true,
-  brightness: Brightness.dark,
+  brightness: Brightness.light,
   scaffoldBackgroundColor: Palette.bg,
-  colorScheme: const ColorScheme.dark(
+  colorScheme: const ColorScheme.light(
     primary: Palette.accent,
     onPrimary: Palette.bg,
     surface: Palette.panel,
     onSurface: Palette.text,
-    secondary: Palette.warning,
+    secondary: Palette.orange,
     primaryContainer: Palette.brandSurface,
     onPrimaryContainer: Palette.accent,
     secondaryContainer: Palette.brandSurface,
     onSecondaryContainer: Palette.text,
-    error: Color(0xFFFFB4A9),
+    error: Color(0xFFB3261E),
   ),
-  textTheme: ThemeData.dark().textTheme.apply(
+  textTheme: ThemeData.light().textTheme.apply(
     bodyColor: Palette.text,
     displayColor: Palette.text,
     fontFamily: 'Roboto',
@@ -55,6 +85,15 @@ ThemeData appTheme() => ThemeData(
     surfaceTintColor: Colors.transparent,
     centerTitle: false,
   ),
+  dialogTheme: const DialogThemeData(
+    backgroundColor: Palette.bg,
+    surfaceTintColor: Colors.transparent,
+  ),
+  bottomSheetTheme: const BottomSheetThemeData(
+    backgroundColor: Palette.bg,
+    surfaceTintColor: Colors.transparent,
+  ),
+  dividerColor: Palette.line,
   inputDecorationTheme: InputDecorationTheme(
     filled: true,
     fillColor: Palette.panel,
@@ -165,7 +204,10 @@ class Surface extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Material(
     color: color,
-    borderRadius: BorderRadius.circular(16),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(16),
+      side: const BorderSide(color: Palette.line),
+    ),
     clipBehavior: Clip.antiAlias,
     child: InkWell(
       onTap: onTap,
