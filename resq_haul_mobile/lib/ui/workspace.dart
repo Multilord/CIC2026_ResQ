@@ -372,11 +372,37 @@ class _WorkspaceState extends State<Workspace> {
       );
     },
   );
+  // Recovery stages that only matter to facilities, haulers and admin —
+  // recipients should not see these unless they are specifically involved.
+  static const _recoveryStages = {
+    'waste', 'assessed', 'recoveryAssigned', 'collected',
+    'facilityArrival', 'facilityAccepted', 'processing', 'rejected',
+  };
+
+  bool _relevantForRecipient(Map<String, dynamic> b) {
+    if (api.role != 'recipient') return true;
+    if (!_recoveryStages.contains(b['stage'])) return true;
+    // Keep it only when the recipient is directly involved.
+    return b['recipientId'] == uid ||
+        b['senderId'] == uid ||
+        (b['offer'] as Map?)?.containsValue(uid) == true;
+  }
+
+  bool _isAvailableMarket(Map<String, dynamic> b) {
+    if (api.role == 'recipient') return b['stage'] == 'listed';
+    if (api.role == 'driver') return ['accepted', 'assessed'].contains(b['stage']);
+    if (api.role == 'recovery') return ['waste', 'rejected'].contains(b['stage']);
+    return b['stage'] == 'listed';
+  }
+
   List<Widget> dashboard() {
     final active = api.batches
         .where(
           (b) => !['delivered', 'completed', 'cancelled'].contains(b['stage']),
         )
+        // Exclude market items (awaiting acceptance) from the active dashboard queue
+        .where((b) => !_isAvailableMarket(b))
+        .where(_relevantForRecipient)
         .toList();
     final issues = active
         .where((b) => b['incident'] != null && b['incident'] != '')
@@ -634,6 +660,7 @@ class _WorkspaceState extends State<Workspace> {
 
   List<Widget> listings() {
     final list = api.batches
+        .where(_relevantForRecipient)
         .where(
           (b) => '${b['name']} ${b['source']} ${b['id']}'
               .toLowerCase()
@@ -643,14 +670,11 @@ class _WorkspaceState extends State<Workspace> {
           (b) =>
               filter == 'All' ||
               (filter == 'Available'
-                  ? b['stage'] == 'listed'
+                  ? _isAvailableMarket(b)
                   : filter == 'Finished'
                   ? ['delivered', 'completed', 'cancelled'].contains(b['stage'])
-                  : ![
-                      'delivered',
-                      'completed',
-                      'cancelled',
-                    ].contains(b['stage'])),
+                  : (!['delivered', 'completed', 'cancelled'].contains(b['stage']) &&
+                     !_isAvailableMarket(b))),
         )
         .toList();
     return [
@@ -806,13 +830,22 @@ class _WorkspaceState extends State<Workspace> {
           gap(16),
           if (api.role == 'driver') ...[
             Text(
-              'RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} transport fare',
+              'RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} total cost',
               style: const TextStyle(
                 color: Palette.accent,
                 fontSize: 22,
                 fontWeight: FontWeight.bold,
               ),
             ),
+            gap(4),
+            Text(
+              'Platform takes 20%. You earn RM ${(((b['fare'] ?? 0) as num) * 0.8).toStringAsFixed(2)}',
+              style: const TextStyle(
+                color: Palette.muted,
+                fontSize: 12,
+              ),
+            ),
+            gap(10),
             Text('To: ${b['routeDestination'] ?? nameFor(b['recipientId'])}'),
             gap(12),
           ],
@@ -910,10 +943,10 @@ class _WorkspaceState extends State<Workspace> {
               at.month == now.month &&
               at.day == now.day;
         })
-        .fold<double>(0, (sum, e) => sum + (e['fare'] as num).toDouble());
+        .fold<double>(0, (sum, e) => sum + ((e['fare'] as num) * 0.8));
     final total = entries.fold<double>(
       0,
-      (sum, e) => sum + (e['fare'] as num).toDouble(),
+      (sum, e) => sum + ((e['fare'] as num) * 0.8),
     );
     return [
       if (!compact) ...[const Editorial('Your earnings.', size: 34), gap(20)],
@@ -955,12 +988,26 @@ class _WorkspaceState extends State<Workspace> {
                 subtitle: Text(
                   '${e['batchId']} · Credited\n${DateTime.fromMillisecondsSinceEpoch(((e['at'] as num) * 1000).toInt()).toString().substring(0, 16)}',
                 ),
-                trailing: Text(
-                  'RM ${(e['fare'] as num).toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    color: Palette.accent,
-                    fontWeight: FontWeight.bold,
-                  ),
+                trailing: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'RM ${((e['fare'] as num) * 0.8).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Palette.accent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      'from RM ${(e['fare'] as num).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Palette.muted,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1351,7 +1398,7 @@ class _WorkspaceState extends State<Workspace> {
                 if (api.role == 'driver')
                   information(
                     'Transport earnings',
-                    'RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} · credited after confirmed handover',
+                    'RM ${(((b['fare'] ?? 0) as num) * 0.8).toStringAsFixed(2)} (80% payout of RM ${((b['fare'] ?? 0) as num).toStringAsFixed(2)} total cost)\nCredited after confirmed handover',
                   ),
                 information(
                   'Offer',
@@ -1673,18 +1720,23 @@ class _SignInState extends State<SignIn> {
                   gap(10),
                   const Center(child: BrandWordmark(size: 30)),
                   gap(28),
-                  const Eyebrow('GOOD FOOD. BETTER FUTURES.'),
+                  const Center(child: Eyebrow('GOOD FOOD. BETTER FUTURES.')),
                   gap(12),
-                  Editorial(
-                    registering ? 'Join the recovery.' : 'Welcome back.',
-                    size: 38,
+                  Center(
+                    child: Editorial(
+                      registering ? 'Join the recovery.' : 'Welcome back.',
+                      size: 38,
+                    ),
                   ),
                   gap(12),
-                  Text(
-                    registering
-                        ? 'One account. A clear role in a better food cycle.'
-                        : 'Sign in to your ResQ-Haul workspace.',
-                    style: const TextStyle(color: Palette.muted),
+                  Center(
+                    child: Text(
+                      registering
+                          ? 'One account. A clear role in a better food cycle.'
+                          : 'Sign in to your ResQ-Haul workspace.',
+                      style: const TextStyle(color: Palette.muted),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                   gap(24),
                   if (registering) ...[

@@ -158,7 +158,7 @@ def seed_prepared(db, replace=False):
             (uid, email, name, role, salt, hashed, 1, user_capacity, location, 1),
         )
     s = state(db)
-    prepared_ids = {'RH-201', 'RH-202', 'RH-203', 'RH-204', 'RH-205'}
+    prepared_ids = {'RH-201', 'RH-202', 'RH-203', 'RH-204', 'RH-205', 'RH-206', 'RH-207', 'RH-208'}
     legacy_ids = {'DEMO-LISTED', 'DEMO-ROUTE', 'DEMO-EXPIRY', 'DEMO-RECOVERY', 'DEMO-COMPLETE'}
     all_prepared_ids = prepared_ids | legacy_ids
     if not replace and prepared_ids.intersection({b['id'] for b in s['batches']}):
@@ -267,10 +267,48 @@ def seed_prepared(db, replace=False):
         e = _prepared_event(at, actor, message, complete['id'], uid); complete['history'].append(e); complete_events.append(e)
     complete['version'] = len(complete['history'])
 
-    for b in [route, expiry, recovery]:
+    awaiting_driver, awaiting_driver_events = batch(
+        'RH-206', 'Assorted bakery items', 10, 'Bread', 60, 20,
+        stage='accepted', ageMinutes=10, recipientId='role-recipient',
+        participants=['role-sender', 'role-recipient'],
+        routeSummary='Awaiting driver assignment',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
+    )
+    e = _prepared_event(now-5*60, 'Community Kitchen', 'Recipient accepted the food and is awaiting a driver.', awaiting_driver['id'], 'role-recipient')
+    awaiting_driver['history'].append(e); awaiting_driver_events.append(e); awaiting_driver['version'] = len(awaiting_driver['history'])
+
+    direct_offer, direct_offer_events = batch(
+        'RH-207', 'Premium vegetable surplus', 15, 'Produce', 90, 15,
+        stage='listed', ageMinutes=2,
+        offer={'target': 'role-recipient', 'name': 'Community Kitchen'},
+        routeSummary='Direct offer pending response',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
+    )
+    e = _prepared_event(now-2*60, 'System', 'Direct offer sent to Community Kitchen.', direct_offer['id'], 'system')
+    direct_offer['history'].append(e); direct_offer_events.append(e); direct_offer['version'] = len(direct_offer['history'])
+
+    delivered, delivered_events = batch(
+        'RH-208', 'Catered lunch boxes', 20, 'Meals', -10, 0,
+        stage='delivered', ageMinutes=90, recipientId='role-recipient',
+        driverId='role-driver', custodianId='role-recipient',
+        participants=['role-sender', 'role-recipient', 'role-driver'],
+        deliveredAt=now-10*60,
+        routeSummary='Delivery completed successfully',
+        routeOrigin='Sentul Event Hall', routeDestination='Community Kitchen',
+    )
+    for at, actor, message, uid in [
+        (now-80*60, 'Community Kitchen', 'Recipient accepted the food.', 'role-recipient'),
+        (now-60*60, 'Raju · Hauler 07', 'Driver assigned.', 'role-driver'),
+        (now-45*60, 'Raju · Hauler 07', 'Pickup confirmed.', 'role-driver'),
+        (now-10*60, 'Raju · Hauler 07', 'Delivery completed and confirmed by recipient.', 'role-driver'),
+    ]:
+        e = _prepared_event(at, actor, message, delivered['id'], uid); delivered['history'].append(e); delivered_events.append(e)
+    delivered['version'] = len(delivered['history'])
+
+    for b in [route, expiry, recovery, delivered]:
         b['transportJob'] = {'id': secrets.token_hex(8), 'driverId': b['driverId'], 'fare': transport_fare(b)}
-    s['batches'].extend([listed, route, expiry, recovery, complete])
-    all_events = listed_events + route_events + expiry_events + recovery_events + complete_events
+    s['batches'].extend([listed, route, expiry, recovery, complete, awaiting_driver, direct_offer, delivered])
+    all_events = listed_events + route_events + expiry_events + recovery_events + complete_events + awaiting_driver_events + direct_offer_events + delivered_events
     s['events'] = sorted(all_events + s['events'], key=lambda e: e['at'], reverse=True)
     s['preparedAt'] = now
     s['ai'] = {'status': 'Optional. Timings and expiry rules run locally.'}
@@ -313,7 +351,7 @@ def seed_marketplace(db, replace=False):
     if s.get('marketplaceSeeded') and not replace:
         return
     if replace:
-        ids = {'RH-301', 'RH-302', 'RH-303', 'RH-304'}
+        ids = {'RH-301', 'RH-302', 'RH-303', 'RH-304', 'RH-305', 'RH-306', 'RH-307'}
         s['batches'] = [b for b in s['batches'] if b['id'] not in ids]
         s['events'] = [e for e in s['events'] if e.get('batchId') not in ids]
         s['earnings'] = [e for e in s.get('earnings', []) if e['batchId'] not in ids]
@@ -323,6 +361,9 @@ def seed_marketplace(db, replace=False):
         ('Fresh bakery bread assortment', 'Neighbourhood Pantry', 8, 18, 'listed'),
         ('Sealed fruit and salad boxes', 'Community Kitchen', 10, 30, 'accepted'),
         ('Community lunch parcels', 'Neighbourhood Pantry', 6, 22, 'delivered'),
+        ('Assorted bakery items', 'Community Kitchen', 10, 20, 'accepted'),
+        ('Premium vegetable surplus', 'Neighbourhood Pantry', 15, 15, 'listed'),
+        ('Catered lunch boxes', 'Community Kitchen', 20, 0, 'delivered'),
     ]):
         owner = 'role-recipient' if i % 2 == 0 else 'role-recipient-near'
         b = {'id': f'RH-{301+i}', 'version': 0, 'name': name, 'source': source,
@@ -331,15 +372,16 @@ def seed_marketplace(db, replace=False):
              'kg': kg, 'category': 'Bread' if i == 1 else 'Meals', 'storage': 'Chilled',
              'allergens': 'Wheat, milk' if i == 1 else 'Check attached ingredient labels; may contain soy',
              'deadline': now + 6*3600, 'eta': eta, 'createdAt': now, 'stage': stage,
-             'donate': True, 'price': 0, 'recipientId': 'role-sender' if i >= 2 else '',
-             'driverId': 'role-driver' if i == 3 else '', 'facilityId': '', 'offer': None,
-             'rerouted': False, 'history': [], 'custodianId': 'role-sender' if i == 3 else owner,
-             'participants': [owner, 'role-sender'] if i >= 2 else [owner],
+             'donate': True, 'price': 0, 'recipientId': 'role-sender' if i >= 2 and i != 5 else '',
+             'driverId': 'role-driver' if (i == 3 or i == 6) else '', 'facilityId': '', 
+             'offer': {'target': 'role-sender', 'name': 'KL Event Collective'} if i == 5 else None,
+             'rerouted': False, 'history': [], 'custodianId': 'role-sender' if (i == 3 or i == 6) else owner,
+             'participants': [owner, 'role-sender'] if i >= 2 and i != 5 else [owner],
              'routeOrigin': source, 'routeDestination': 'KL Event Collective' if i >= 2 else '',
              'packaging': 'Sealed food-grade containers', 'portions': kg * 3,
              'pickupNotes': 'Collect at the reception counter. Ring on arrival.',
              'etaSource': 'Planning estimate; confirmed by the assigned driver'}
-        if i == 3:
+        if i == 3 or i == 6:
             b.update(deliveredAt=now-1800, receipt='RCPT-MARKET-304', eta=0,
                      transportJob={'id': 'prepared-trip-304', 'driverId': 'role-driver', 'fare': 19.0})
             credit_driver(s, b)

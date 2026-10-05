@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 
 class Palette {
@@ -536,7 +537,7 @@ class _NetworkPainter extends CustomPainter {
       old.risk != risk || old.radius != radius;
 }
 
-class RouteMap extends StatelessWidget {
+class RouteMap extends StatefulWidget {
   const RouteMap({
     super.key,
     required this.origin,
@@ -555,25 +556,69 @@ class RouteMap extends StatelessWidget {
   final bool arrived;
 
   @override
+  State<RouteMap> createState() => _RouteMapState();
+}
+
+class _RouteMapState extends State<RouteMap> with TickerProviderStateMixin {
+  late final AnimationController _drawController;
+  late final AnimationController _vehicleController;
+  late final AnimationController _pulseController;
+
+  @override
+  void initState() {
+    super.initState();
+    _drawController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..forward();
+    _vehicleController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2200),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _drawController.dispose();
+    _vehicleController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) => Semantics(
-    label: arrived
-        ? 'Arrival confirmed at $destination.'
-        : 'Route from $origin to $destination. Current estimate $currentEta minutes${alternativeEta == null ? '' : ', alternative $alternativeEta minutes'}.',
+    label: widget.arrived
+        ? 'Arrival confirmed at ${widget.destination}.'
+        : 'Route from ${widget.origin} to ${widget.destination}. Current estimate ${widget.currentEta} minutes${widget.alternativeEta == null ? '' : ', alternative ${widget.alternativeEta} minutes'}.',
     child: ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: SizedBox(
-        height: 236,
+        height: 260,
         child: Stack(
           children: [
             Positioned.fill(
-              child: CustomPaint(
-                painter: _RoutePainter(
-                  showAlternative:
-                      !arrived &&
-                      alternativeEta != null &&
-                      alternativeEta! < currentEta,
-                  expired: expired,
-                  arrived: arrived,
+              child: AnimatedBuilder(
+                animation: Listenable.merge([
+                  _drawController,
+                  _vehicleController,
+                  _pulseController,
+                ]),
+                builder: (context, _) => CustomPaint(
+                  painter: _AnimatedRoutePainter(
+                    drawProgress: _drawController.value,
+                    vehicleProgress: _vehicleController.value,
+                    pulseProgress: _pulseController.value,
+                    showAlternative:
+                        !widget.arrived &&
+                        widget.alternativeEta != null &&
+                        widget.alternativeEta! < widget.currentEta,
+                    expired: widget.expired,
+                    arrived: widget.arrived,
+                  ),
                 ),
               ),
             ),
@@ -586,19 +631,23 @@ class RouteMap extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   Pill(
-                    arrived
+                    widget.arrived
                         ? 'Arrival confirmed'
-                        : expired
+                        : widget.expired
                         ? 'Food window elapsed'
-                        : 'Current · $currentEta min',
-                    color: expired ? Palette.warning : Palette.text,
-                    icon: expired ? Icons.timer_off_outlined : Icons.traffic,
+                        : 'Current · ${widget.currentEta} min',
+                    color: widget.expired ? Palette.warning : Palette.text,
+                    icon: widget.expired
+                        ? Icons.timer_off_outlined
+                        : widget.arrived
+                        ? Icons.check_circle
+                        : Icons.traffic,
                   ),
-                  if (!arrived &&
-                      alternativeEta != null &&
-                      alternativeEta! < currentEta)
+                  if (!widget.arrived &&
+                      widget.alternativeEta != null &&
+                      widget.alternativeEta! < widget.currentEta)
                     Pill(
-                      'Faster route · $alternativeEta min',
+                      'Faster route · ${widget.alternativeEta} min',
                       icon: Icons.alt_route,
                     ),
                 ],
@@ -610,51 +659,103 @@ class RouteMap extends StatelessWidget {
               bottom: 13,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
+                  horizontal: 14,
+                  vertical: 11,
                 ),
                 decoration: BoxDecoration(
-                  color: Palette.bg.withValues(alpha: .9),
+                  color: Palette.bg.withValues(alpha: .92),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: Palette.line),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Palette.text.withValues(alpha: .06),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
                 child: Row(
                   children: [
-                    const Icon(
-                      Icons.trip_origin,
-                      size: 15,
-                      color: Palette.text,
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Palette.text,
+                        border: Border.all(color: Palette.bg, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Palette.text.withValues(alpha: .2),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 6),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        origin,
+                        widget.origin,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Icon(
-                        Icons.arrow_forward,
-                        size: 14,
-                        color: Palette.muted,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 16,
+                            height: 2,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Palette.muted.withValues(alpha: .3),
+                                  Palette.accent.withValues(alpha: .6),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          const Icon(
+                            Icons.arrow_forward_ios,
+                            size: 10,
+                            color: Palette.accent,
+                          ),
+                        ],
                       ),
                     ),
-                    const Icon(
-                      Icons.location_on,
-                      size: 15,
-                      color: Palette.accent,
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Palette.accent,
+                        border: Border.all(color: Palette.bg, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Palette.accent.withValues(alpha: .3),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        destination,
+                        widget.destination,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.end,
-                        style: const TextStyle(fontSize: 11),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                   ],
@@ -668,109 +769,290 @@ class RouteMap extends StatelessWidget {
   );
 }
 
-class _RoutePainter extends CustomPainter {
-  const _RoutePainter({
+class _AnimatedRoutePainter extends CustomPainter {
+  const _AnimatedRoutePainter({
+    required this.drawProgress,
+    required this.vehicleProgress,
+    required this.pulseProgress,
     required this.showAlternative,
     required this.expired,
     required this.arrived,
   });
+
+  final double drawProgress;
+  final double vehicleProgress;
+  final double pulseProgress;
   final bool showAlternative;
   final bool expired;
   final bool arrived;
 
+  // Calculate a point on a cubic Bezier at parameter t.
+  Offset _bezier(Offset p0, Offset p1, Offset p2, Offset p3, double t) {
+    final u = 1 - t;
+    return p0 * (u * u * u) +
+        p1 * (3 * u * u * t) +
+        p2 * (3 * u * t * t) +
+        p3 * (t * t * t);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawRect(Offset.zero & size, Paint()..color = Palette.panel);
-    final minorRoad = Paint()
-      ..color = Palette.line.withValues(alpha: .65)
-      ..strokeWidth = 5
-      ..style = PaintingStyle.stroke;
+    // --- Background ---
+    final bgRect = Offset.zero & size;
+    canvas.drawRect(
+      bgRect,
+      Paint()
+        ..shader = const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFFF6F9F2), Color(0xFFEEF3E8), Color(0xFFF0F5EC)],
+        ).createShader(bgRect),
+    );
+
+    // --- Grid / Street Pattern ---
+    final gridPaint = Paint()
+      ..color = Palette.line.withValues(alpha: 0.4)
+      ..strokeWidth = 1;
+    final gridSpacingH = size.width / 12;
+    final gridSpacingV = size.height / 8;
+    for (double x = gridSpacingH; x < size.width; x += gridSpacingH) {
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), gridPaint);
+    }
+    for (double y = gridSpacingV; y < size.height; y += gridSpacingV) {
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+    }
+
+    // --- "City block" fills for visual richness ---
+    final blockPaint = Paint()..color = const Color(0xFFE3ECD8).withValues(alpha: 0.5);
+    for (int i = 0; i < 4; i++) {
+      final bx = gridSpacingH * (2 + i * 3) + 3;
+      final by = gridSpacingV * (1 + (i % 3) * 2) + 3;
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromLTWH(bx, by, gridSpacingH * 2 - 6, gridSpacingV - 6),
+          const Radius.circular(4),
+        ),
+        blockPaint,
+      );
+    }
+
+    // --- Major roads (wider) ---
     final majorRoad = Paint()
-      ..color = Palette.brandSurface
-      ..strokeWidth = 11
+      ..color = const Color(0xFFD4DFCA)
+      ..strokeWidth = 8
+      ..strokeCap = StrokeCap.round
       ..style = PaintingStyle.stroke;
-    for (double x = -80; x < size.width + 80; x += 72) {
-      canvas.drawLine(Offset(x, 0), Offset(x + 105, size.height), minorRoad);
-    }
-    for (double y = 70; y < size.height + 70; y += 58) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y - 48), minorRoad);
-    }
+    // Horizontal major road
     canvas.drawPath(
       Path()
-        ..moveTo(-10, size.height * .72)
+        ..moveTo(-10, size.height * .45)
         ..cubicTo(
-          size.width * .26,
-          size.height * .36,
-          size.width * .62,
-          size.height * .84,
-          size.width + 10,
-          size.height * .24,
+          size.width * .2, size.height * .40,
+          size.width * .7, size.height * .50,
+          size.width + 10, size.height * .35,
+        ),
+      majorRoad,
+    );
+    // Diagonal major road
+    canvas.drawPath(
+      Path()
+        ..moveTo(-10, size.height * .85)
+        ..cubicTo(
+          size.width * .30, size.height * .30,
+          size.width * .60, size.height * .80,
+          size.width + 10, size.height * .15,
         ),
       majorRoad,
     );
 
-    final start = Offset(size.width * .16, size.height * .65);
-    final end = Offset(size.width * .84, size.height * .43);
-    final current = Path()
-      ..moveTo(start.dx, start.dy)
-      ..cubicTo(
-        size.width * .34,
-        size.height * .30,
-        size.width * .58,
-        size.height * .82,
-        end.dx,
-        end.dy,
+    // --- Route geometry ---
+    final startPt = Offset(size.width * .14, size.height * .62);
+    final endPt = Offset(size.width * .86, size.height * .38);
+    final cp1Main = Offset(size.width * .32, size.height * .22);
+    final cp2Main = Offset(size.width * .60, size.height * .82);
+
+    // --- Draw alternative route (dashed, animated) ---
+    if (showAlternative) {
+      final cp1Alt = Offset(size.width * .36, size.height * .72);
+      final cp2Alt = Offset(size.width * .60, size.height * .30);
+      final altPath = Path()
+        ..moveTo(startPt.dx, startPt.dy)
+        ..cubicTo(cp1Alt.dx, cp1Alt.dy, cp2Alt.dx, cp2Alt.dy, endPt.dx, endPt.dy);
+
+      // Animated dashes
+      final dashPaint = Paint()
+        ..color = Palette.accent.withValues(alpha: .6)
+        ..strokeWidth = 3.5
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke;
+
+      final altMetrics = altPath.computeMetrics().first;
+      final totalLen = altMetrics.length;
+      const dashLen = 10.0;
+      const gapLen = 8.0;
+      final offset = (vehicleProgress * (dashLen + gapLen)) % (dashLen + gapLen);
+      double dist = -offset;
+      while (dist < totalLen) {
+        final s = dist.clamp(0.0, totalLen);
+        final e = (dist + dashLen).clamp(0.0, totalLen);
+        if (e > s) {
+          final segment = altMetrics.extractPath(s, e);
+          canvas.drawPath(segment, dashPaint);
+        }
+        dist += dashLen + gapLen;
+      }
+
+      // Draw a subtle glow under the alternative route
+      canvas.drawPath(
+        altPath,
+        Paint()
+          ..color = Palette.accent.withValues(alpha: .08)
+          ..strokeWidth = 14
+          ..strokeCap = StrokeCap.round
+          ..style = PaintingStyle.stroke
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
       );
+    }
+
+    // --- Draw main route (animated drawing) ---
+    final mainPath = Path()
+      ..moveTo(startPt.dx, startPt.dy)
+      ..cubicTo(
+        cp1Main.dx, cp1Main.dy,
+        cp2Main.dx, cp2Main.dy,
+        endPt.dx, endPt.dy,
+      );
+    final mainMetrics = mainPath.computeMetrics().first;
+    final drawnLength = mainMetrics.length * drawProgress.clamp(0.0, 1.0);
+    final drawnPath = mainMetrics.extractPath(0, drawnLength);
+
+    // Glow under main route
     canvas.drawPath(
-      current,
+      drawnPath,
       Paint()
-        ..color = expired ? Palette.muted : Palette.warning
-        ..strokeWidth = 5
+        ..color = (expired ? Palette.muted : Palette.warning).withValues(alpha: .10)
+        ..strokeWidth = 18
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8),
+    );
+
+    // Main route line with rounded caps
+    final routeColor = expired ? Palette.muted : Palette.warning;
+    canvas.drawPath(
+      drawnPath,
+      Paint()
+        ..color = routeColor.withValues(alpha: .3)
+        ..strokeWidth = 8
+        ..strokeCap = StrokeCap.round
+        ..style = PaintingStyle.stroke,
+    );
+    canvas.drawPath(
+      drawnPath,
+      Paint()
+        ..color = routeColor
+        ..strokeWidth = 4
         ..strokeCap = StrokeCap.round
         ..style = PaintingStyle.stroke,
     );
 
-    if (showAlternative) {
-      final alternative = Path()
-        ..moveTo(start.dx, start.dy)
-        ..cubicTo(
-          size.width * .35,
-          size.height * .70,
-          size.width * .58,
-          size.height * .36,
-          end.dx,
-          end.dy,
-        );
-      canvas.drawPath(
-        alternative,
-        Paint()
-          ..color = Palette.accent
-          ..strokeWidth = 5
-          ..strokeCap = StrokeCap.round
-          ..style = PaintingStyle.stroke,
-      );
+    // --- Vehicle position ---
+    final double vehicleT;
+    if (arrived) {
+      vehicleT = 1.0;
+    } else {
+      // Smooth oscillation between ~0.3 and ~0.7 to simulate motion
+      vehicleT = 0.3 + 0.4 * (0.5 + 0.5 * _smoothCycle(vehicleProgress));
     }
+    final vehiclePos = _bezier(startPt, cp1Main, cp2Main, endPt, vehicleT);
 
-    for (final point in [start, end]) {
-      canvas.drawCircle(point, 12, Paint()..color = Palette.bg);
-      canvas.drawCircle(
-        point,
-        7,
-        Paint()..color = point == end ? Palette.accent : Palette.text,
-      );
-    }
-    final vehicle = arrived ? end : Offset(size.width * .53, size.height * .54);
-    canvas.drawCircle(vehicle, 13, Paint()..color = Palette.bg);
+    // Vehicle shadow
     canvas.drawCircle(
-      vehicle,
+      vehiclePos + const Offset(1, 2),
+      14,
+      Paint()
+        ..color = Palette.text.withValues(alpha: .08)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
+    );
+
+    // Vehicle outer ring (animated pulse)
+    final vPulseR = 14.0 + 3.0 * pulseProgress;
+    canvas.drawCircle(
+      vehiclePos,
+      vPulseR,
+      Paint()..color = (expired ? Palette.muted : Palette.warning).withValues(alpha: .15 * (1 - pulseProgress)),
+    );
+
+    // Vehicle body
+    canvas.drawCircle(vehiclePos, 13, Paint()..color = Palette.bg);
+    canvas.drawCircle(
+      vehiclePos,
       8,
       Paint()..color = expired ? Palette.muted : Palette.warning,
     );
+    // Vehicle inner dot
+    canvas.drawCircle(vehiclePos, 3.5, Paint()..color = Palette.bg);
+
+    // --- Origin marker ---
+    // Pulse ring
+    final oPulseR = 16.0 + 4.0 * pulseProgress;
+    canvas.drawCircle(
+      startPt,
+      oPulseR,
+      Paint()..color = Palette.text.withValues(alpha: .06 * (1 - pulseProgress)),
+    );
+    // Shadow
+    canvas.drawCircle(
+      startPt + const Offset(1, 2),
+      13,
+      Paint()
+        ..color = Palette.text.withValues(alpha: .08)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    canvas.drawCircle(startPt, 13, Paint()..color = Palette.bg);
+    canvas.drawCircle(startPt, 7, Paint()..color = Palette.text);
+    canvas.drawCircle(startPt, 3, Paint()..color = Palette.bg);
+
+    // --- Destination marker ---
+    // Pulse ring
+    final dPulseR = 16.0 + 5.0 * pulseProgress;
+    canvas.drawCircle(
+      endPt,
+      dPulseR,
+      Paint()..color = Palette.accent.withValues(alpha: .10 * (1 - pulseProgress)),
+    );
+    // Shadow
+    canvas.drawCircle(
+      endPt + const Offset(1, 2),
+      13,
+      Paint()
+        ..color = Palette.accent.withValues(alpha: .12)
+        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
+    );
+    canvas.drawCircle(endPt, 13, Paint()..color = Palette.bg);
+    canvas.drawCircle(endPt, 7, Paint()..color = Palette.accent);
+    canvas.drawCircle(endPt, 3, Paint()..color = Palette.bg);
+
+    // --- Arrival celebration rings ---
+    if (arrived) {
+      for (var i = 0; i < 3; i++) {
+        final r = 20.0 + (i * 12.0) + 6.0 * pulseProgress;
+        canvas.drawCircle(
+          endPt,
+          r,
+          Paint()
+            ..color = Palette.accent.withValues(alpha: .08 * (1 - pulseProgress * .7))
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2,
+        );
+      }
+    }
+  }
+
+  double _smoothCycle(double t) {
+    return sin(t * 2 * pi);
   }
 
   @override
-  bool shouldRepaint(covariant _RoutePainter oldDelegate) =>
-      oldDelegate.showAlternative != showAlternative ||
-      oldDelegate.expired != expired ||
-      oldDelegate.arrived != arrived;
+  bool shouldRepaint(covariant _AnimatedRoutePainter oldDelegate) => true;
 }
