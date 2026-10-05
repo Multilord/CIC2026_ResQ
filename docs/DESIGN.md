@@ -19,7 +19,7 @@ Use the supplied food-cycle symbol: a green bowl, produce and circular recovery 
 | Golden yellow | `#FFBE00` |
 | Readable orange text | `#B85B00` |
 
-The supplied brand sheet is the reference. The transparent symbol lives at `resq_haul_mobile/assets/images/resq-haul-logo.png`; platform icons use the same symbol on cream. Created with the built-in image tool using this extraction prompt:
+The supplied brand sheet is the reference. The wordmark displays the original sprite pixels from `resq_haul_mobile/assets/images/resq-haul-brand-sheet.png`, preserving the supplied lettering and leaf inside the Q. The transparent symbol lives at `resq_haul_mobile/assets/images/resq-haul-logo.png`; platform icons use the same symbol on cream. The symbol was created with the built-in image tool using this extraction prompt:
 
 > Extract only the supplied food-cycle symbol: green bowl with white leaf, orange bread, red-orange apple, green leaves, two circular green recycling arrows and golden emphasis marks. Preserve its identity, colours, gradients and arrangement. Centre the symbol on transparent alpha with safe padding. Remove wordmarks, square containers, other variants, palette and background. No new logo design or text.
 

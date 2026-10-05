@@ -36,24 +36,35 @@ class BrandWordmark extends StatelessWidget {
   const BrandWordmark({super.key, this.size = 26});
   final double size;
   @override
-  Widget build(BuildContext context) => Text.rich(
-    TextSpan(
-      children: [
-        const TextSpan(
-          text: 'ResQ',
-          style: TextStyle(color: Palette.accent),
-        ),
-        const TextSpan(
-          text: '-Haul',
-          style: TextStyle(color: Palette.orangeInk),
-        ),
-      ],
-    ),
-    semanticsLabel: 'ResQ-Haul',
-    style: TextStyle(
-      fontSize: size,
-      fontWeight: FontWeight.w900,
-      letterSpacing: -.8,
+  Widget build(BuildContext context) => Semantics(
+    label: 'ResQ-Haul',
+    image: true,
+    child: SizedBox(
+      width: size * 6,
+      height: size * 6 * 116 / 480,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Display the original sprite pixels, preserving its custom lettering.
+          final scale = constraints.maxWidth / 480;
+          return Stack(
+            clipBehavior: Clip.hardEdge,
+            children: [
+              Positioned(
+                left: -1158 * scale,
+                top: -460 * scale,
+                width: 1672 * scale,
+                height: 941 * scale,
+                child: Image.asset(
+                  'assets/images/resq-haul-brand-sheet.png',
+                  fit: BoxFit.fill,
+                  filterQuality: FilterQuality.high,
+                  excludeFromSemantics: true,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
     ),
   );
 }
