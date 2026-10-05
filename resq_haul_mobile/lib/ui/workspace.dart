@@ -10,6 +10,14 @@ const roleNames = {
   'recovery': 'Recovery Facility',
   'admin': 'Admin',
 };
+const senderTypes = [
+  'Individual / household',
+  'Event host',
+  'Restaurant / kitchen',
+  'Retailer',
+  'Community organisation',
+  'Other organisation',
+];
 const stages = {
   'listed': 'Awaiting recipient',
   'accepted': 'Awaiting driver',
@@ -1008,6 +1016,8 @@ class _WorkspaceState extends State<Workspace> {
           Text(api.user['name'], style: const TextStyle(fontSize: 22)),
           gap(8),
           Text('${roleNames[api.role]} · ${api.user['location']}'),
+          if (api.user['senderType'] != null && api.user['senderType'] != '')
+            Text('Account type: ${api.user['senderType']}'),
           gap(8),
           Text('Capacity: ${api.user['capacity']} kg'),
           SwitchListTile(
@@ -1644,6 +1654,7 @@ class _SignInState extends State<SignIn> {
   final values = <String, String>{};
   bool registering = false, busy = false, revealPassword = false;
   String role = 'member';
+  String? senderType;
   String? message;
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -1700,6 +1711,29 @@ class _SignInState extends State<SignIn> {
                       onChanged: (v) => setState(() => role = v!),
                     ),
                     gap(12),
+                    if (role == 'member') ...[
+                      DropdownButtonFormField<String>(
+                        initialValue: senderType,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Sender type',
+                        ),
+                        items: senderTypes
+                            .map(
+                              (v) => DropdownMenuItem(value: v, child: Text(v)),
+                            )
+                            .toList(),
+                        onChanged: (v) => setState(() => senderType = v),
+                        validator: (v) =>
+                            v == null ? 'Choose your account type' : null,
+                      ),
+                      gap(8),
+                      const Text(
+                        'Saved to your account and used for every food listing.',
+                        style: TextStyle(color: Palette.muted, fontSize: 12),
+                      ),
+                      gap(12),
+                    ],
                     input('location', 'Area / collection address'),
                     input('capacity', 'Daily capacity (kg)', numeric: true),
                   ],
@@ -1806,7 +1840,11 @@ class _SignInState extends State<SignIn> {
     });
     try {
       if (registering) {
-        await widget.service.request('/register', {...values, 'role': role});
+        await widget.service.request('/register', {
+          ...values,
+          'role': role,
+          if (role == 'member') 'senderType': senderType,
+        });
         if (mounted) {
           setState(() {
             registering = false;
@@ -1842,9 +1880,7 @@ class _ListingFormState extends State<ListingForm> {
   final form = GlobalKey<FormState>();
   final values = <String, String>{};
   bool confirmed = false, waste = false, donate = true, busy = false;
-  String senderType = 'Individual / household',
-      category = 'Meals',
-      storage = 'Chilled';
+  String category = 'Meals', storage = 'Chilled';
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('New listing')),
@@ -1860,13 +1896,11 @@ class _ListingFormState extends State<ListingForm> {
               gap(12),
               const Editorial('What can you share?', size: 34),
               gap(20),
-              dropdown('Sender type', senderType, [
-                'Individual / household',
-                'Event host',
-                'Restaurant / kitchen',
-                'Retailer',
-                'Other organisation',
-              ], (v) => senderType = v),
+              Text(
+                'Sending as ${widget.service.user['senderType'] ?? 'your registered account'}',
+                style: const TextStyle(color: Palette.muted),
+              ),
+              gap(16),
               input('name', 'Food or material description'),
               input('location', 'Pickup address and access instructions'),
               dropdown('Category', category, [
@@ -1988,7 +2022,6 @@ class _ListingFormState extends State<ListingForm> {
         'create',
         fields: {
           ...values,
-          'senderType': senderType,
           'category': category,
           'storage': storage,
           'waste': waste,

@@ -29,6 +29,8 @@ Expiry blocks incomplete food handovers and sends the material to recovery witho
 Permissions, confirmations, record versions, capacity and time checks are enforced by the API. Gemini recommendations cannot replace human inspection or handover decisions. These are user confirmations; live GPS arrival validation remains a separate integration.
 # Food marketplace and transport earnings
 
+Sender type is selected during Send & receive account registration and stored in the account profile. It is separate from the sending/receiving mode selected on login. New listings inherit the stored type on the server; listing submissions cannot change it. Existing account types are migrated from their previous listings where available, with Individual / household as the fallback. Historical listings retain their original details.
+
 The bottom-right + button opens the posting form in sending mode and the available-food browser in receiving mode. Listings include quantity, portions, packaging, allergens, storage, pickup instructions, food window and a planning ETA. The receiver reviews these details before accepting. Arrival times include collection and transport and remain estimates until updated by the driver; they are not live navigation predictions.
 
 Prepared receiving journeys RH-301–304 include two available offers from other organisations, an accepted collection and a completed receipt. Admin's Restart journey timings action refreshes these examples alongside the original journeys without replacing user-created listings.

@@ -24,6 +24,7 @@ DB = Path(os.environ.get('RESQ_DB', str(ROOT / 'data/resq.sqlite3')))
 LOCK = threading.RLock()
 AI_REVIEWED = {}
 ROLES = ['sender', 'recipient', 'member', 'driver', 'recovery', 'admin']
+SENDER_TYPES = ['Individual / household', 'Event host', 'Restaurant / kitchen', 'Retailer', 'Community organisation', 'Other organisation']
 ACTIVE = ['listed', 'accepted', 'assigned', 'transit']
 TERMINAL = ['delivered', 'completed', 'cancelled']
 
@@ -83,6 +84,7 @@ def initialize(seed_prepared_data=None):
         ''')
         if 'active_mode' not in [r['name'] for r in db.execute('PRAGMA table_info(sessions)')]:
             db.execute('ALTER TABLE sessions ADD COLUMN active_mode TEXT')
+        db.execute('CREATE TABLE IF NOT EXISTS account_profiles(user_id TEXT PRIMARY KEY, sender_type TEXT NOT NULL)')
         db.execute('INSERT OR IGNORE INTO state VALUES(1, ?)', (json.dumps({'batches': [], 'events': [], 'paused': False, 'ai': {'status': 'Not run yet'}}),))
         if not db.execute("SELECT 1 FROM users WHERE role='admin'").fetchone():
             password = os.environ.get('RESQ_ADMIN_PASSWORD') or secrets.token_urlsafe(15)
@@ -97,6 +99,9 @@ def initialize(seed_prepared_data=None):
             seed_marketplace(db)
         db.execute("UPDATE users SET role='member' WHERE role IN ('sender','recipient')")
         s = state(db)
+        for user in db.execute("SELECT id FROM users WHERE role='member'").fetchall():
+            previous = next((b['senderType'] for b in reversed(s['batches']) if b['senderId'] == user['id'] and b.get('senderType') in SENDER_TYPES), 'Individual / household')
+            db.execute('INSERT OR IGNORE INTO account_profiles VALUES(?,?)', (user['id'], previous))
         for b in s['batches']:
             if b.get('driverId') and b['stage'] not in TERMINAL and not b.get('transportJob'):
                 b['transportJob'] = {'id': secrets.token_hex(8), 'driverId': b['driverId'], 'fare': transport_fare(b)}
@@ -104,7 +109,7 @@ def initialize(seed_prepared_data=None):
 
 
 def public(u):
-    return {**{k: u[k] for k in ['id', 'name', 'role', 'approved', 'capacity', 'location', 'available']}, 'accountRole': u.get('accountRole', u['role'])}
+    return {**{k: u[k] for k in ['id', 'name', 'role', 'approved', 'capacity', 'location', 'available']}, 'accountRole': u.get('accountRole', u['role']), 'senderType': u.get('sender_type', '')}
 
 
 def state(db):
@@ -345,7 +350,7 @@ def seed_marketplace(db, replace=False):
 
 
 def session(db, token):
-    u = db.execute('SELECT u.*, s.active_mode FROM users u JOIN sessions s ON u.id=s.user_id WHERE s.token=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
+    u = db.execute('SELECT u.*, s.active_mode, p.sender_type FROM users u JOIN sessions s ON u.id=s.user_id LEFT JOIN account_profiles p ON p.user_id=u.id WHERE s.token=? AND s.expires>?', (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
     require(u is not None, 'Please sign in again.', 401)
     user = dict(u)
     user['accountRole'] = user['role']
@@ -358,7 +363,7 @@ def load_for(db, user):
     s = state(db)
     expire(s)
     save(db, s)
-    users = [public(dict(u)) for u in db.execute('SELECT * FROM users')]
+    users = [public(dict(u)) for u in db.execute('SELECT u.*, p.sender_type FROM users u LEFT JOIN account_profiles p ON p.user_id=u.id')]
     visible = []
     for original in s['batches']:
         b = json.loads(json.dumps(original))
@@ -439,6 +444,9 @@ def command(db, u, d):
         return
     if a == 'create':
         require(u['role'] == 'sender', 'Sender access required.', 403)
+        profile = db.execute('SELECT sender_type FROM account_profiles WHERE user_id=?', (u['id'],)).fetchone()
+        require(profile is not None, 'Your account needs an established sender type before publishing.')
+        d = {**d, 'senderType': profile['sender_type']}
         require(d.get('confirmed') is True, 'Confirm the food details and approved handling window.')
         b = {'id': 'RH-' + secrets.token_hex(3).upper(), 'version': 0, 'name': text(d, 'name'), 'senderId': u['id'], 'source': u['name'], 'senderType': text(d, 'senderType'), 'location': text(d, 'location'), 'kg': number(d, 'kg', .1, 500), 'category': text(d, 'category'), 'storage': text(d, 'storage'), 'allergens': text(d, 'allergens'), 'deadline': time.time() + number(d, 'minutes', 5, 1440)*60, 'eta': number(d, 'eta', 1, 240), 'createdAt': time.time(), 'stage': 'waste' if d.get('waste') else 'listed', 'donate': bool(d.get('donate', True)), 'price': number(d, 'price', 0, 10000), 'recipientId': '', 'driverId': '', 'facilityId': '', 'offer': None, 'rerouted': False, 'history': []}
         s['batches'].append(b)
@@ -756,6 +764,8 @@ class Handler(BaseHTTPRequestHandler):
                     require(role in ROLES[:-1], 'Select a valid role.')
                     if role in ['sender', 'recipient']:
                         role = 'member'
+                    sender_type = text(d, 'senderType') if role == 'member' else None
+                    require(role != 'member' or sender_type in SENDER_TYPES, 'Choose a valid sender type.')
                     email = text(d, 'email', 5, 120).lower()
                     require('@' in email, 'Enter a valid email.')
                     password = text(d, 'password', 10, 128)
@@ -763,6 +773,8 @@ class Handler(BaseHTTPRequestHandler):
                     uid = secrets.token_hex(12)
                     require(not db.execute('SELECT 1 FROM users WHERE email=?', (email,)).fetchone(), 'An account already exists with this email.')
                     db.execute('INSERT INTO users VALUES(?,?,?,?,?,?,?,?,?,?)', (uid, email, text(d, 'name'), role, salt, password_hash(password, salt), int(role == 'sender'), number(d, 'capacity', 1, 1000), text(d, 'location'), 1))
+                    if sender_type:
+                        db.execute('INSERT INTO account_profiles VALUES(?,?)', (uid, sender_type))
                     out = {'message': 'Account created. Sign in to continue.'}
                 elif self.path == '/login' and self.command == 'POST':
                     row = db.execute('SELECT * FROM users WHERE email=?', (text(d, 'email').lower(),)).fetchone()

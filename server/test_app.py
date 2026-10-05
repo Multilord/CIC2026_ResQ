@@ -21,6 +21,9 @@ class WorkflowTests(unittest.TestCase):
             self.people[role] = dict(self.db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone())
         self.db.commit()
 
+        self.db.execute("INSERT INTO account_profiles VALUES('sender', 'Event host')")
+        self.db.commit()
+
     def tearDown(self):
         self.db.close()
         self.temp.cleanup()
@@ -93,6 +96,11 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaises(app.Problem) as error:
             self.cmd('driver', 'claim', version=b['version'])
         self.assertEqual(error.exception.status, 409)
+
+    def test_listing_uses_registered_type_despite_client_override(self):
+        self.db.execute("UPDATE account_profiles SET sender_type='Retailer' WHERE user_id='sender'")
+        b = self.create()
+        self.assertEqual(b['senderType'], 'Retailer')
 
     def test_pickup_requires_current_holder_and_expiry_blocks_release(self):
         self.create()
@@ -261,11 +269,16 @@ class WorkflowTests(unittest.TestCase):
             with urllib.request.urlopen(req) as response:
                 return json.load(response)
         try:
-            request('/register', {'role': 'recipient', 'email': 'new@test.local', 'password': 'test-password-123', 'name': 'New recipient', 'location': 'Test location', 'capacity': 20})
+            with self.assertRaises(HTTPError) as missing_type:
+                request('/register', {'role': 'member', 'email': 'missing@test.local', 'password': 'test-password-123', 'name': 'Missing type', 'location': 'Test location', 'capacity': 20})
+            self.assertEqual(missing_type.exception.code, 400)
+            missing_type.exception.close()
+            request('/register', {'role': 'recipient', 'senderType': 'Retailer', 'email': 'new@test.local', 'password': 'test-password-123', 'name': 'New recipient', 'location': 'Test location', 'capacity': 20})
             token = request('/login', {'email': 'new@test.local', 'password': 'test-password-123'})['token']
             data = request('/state', token=token)
             self.assertEqual(data['user']['approved'], 0)
             self.assertEqual(data['user']['role'], 'member')
+            self.assertEqual(data['user']['senderType'], 'Retailer')
             self.assertNotIn('password', data['user'])
             with self.assertRaises(HTTPError) as denied:
                 request('/command', {'action': 'availability', 'available': True}, token)
